@@ -1,0 +1,6 @@
+{
+  "name": "Z-VPN",
+  "description": "Fast, sleek, and secure VPN with real-time speed metrics, global servers, and advanced privacy protection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

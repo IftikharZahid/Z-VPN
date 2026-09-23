@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Glowing outer shield contour -->
+    <path
+        android:pathData="M54,23 L31,32.5 C31,52 41,69.5 54,78 C67,69.5 77,52 77,32.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="31"
+                android:startY="23"
+                android:endX="77"
+                android:endY="78"
+                android:type="linear">
+                <item android:color="#22D3EE" android:offset="0.0" />
+                <item android:color="#3B82F6" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Inner shield inset -->
+    <path
+        android:pathData="M54,27.5 L34.5,35.5 C34.5,52 43,67 54,74 C65,67 73.5,52 73.5,35.5 Z"
+        android:fillColor="#09101C" />
+
+    <!-- Bold Stylized Z monogram inside shield -->
+    <path
+        android:pathData="M43,40 L65,40 L65,44.5 L49,58 L65,58 L65,63 L43,63 L43,58.5 L59,45 L43,45 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="43"
+                android:startY="40"
+                android:endX="65"
+                android:endY="63"
+                android:type="linear">
+                <item android:color="#22D3EE" android:offset="0.0" />
+                <item android:color="#60A5FA" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top highlight tick -->
+    <path
+        android:pathData="M54,25 L33,34 L33,37 L54,28 L75,37 L75,34 Z"
+        android:fillColor="#80E8EEFA" />
+
+</vector>
