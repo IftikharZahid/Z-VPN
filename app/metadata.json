@@ -1,0 +1,6 @@
+{
+  "name": "Z-VPN",
+  "description": "Dynamic Firebase Firestore powered VPN application with VLESS, VMess, and Trojan protocol support",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

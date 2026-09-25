@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.NetworkPing
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
@@ -96,6 +97,8 @@ fun ServersScreen(
   onSortSelect: (ServerSortOption) -> Unit = {},
   onServerSelect: (Server, Boolean) -> Unit,
   onToggleFavorite: (String) -> Unit,
+  onDeleteServer: (String) -> Unit = {},
+  onClearAllImported: () -> Unit = {},
   onBackClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
@@ -451,6 +454,53 @@ fun ServersScreen(
       }
     }
 
+    // Clear All Imported Banner (if any imported servers exist)
+    val importedCount = servers.count { it.isImported }
+    if (importedCount > 0) {
+      item {
+        Row(
+          modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(DarkSurfaceCard)
+            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.Delete,
+              contentDescription = null,
+              tint = Color(0xFFEF4444),
+              modifier = Modifier.size(18.dp)
+            )
+            Text(
+              text = "$importedCount imported configuration(s)",
+              fontSize = 12.sp,
+              fontWeight = FontWeight.SemiBold,
+              color = TextPrimary
+            )
+          }
+
+          TextButton(
+            onClick = onClearAllImported,
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+          ) {
+            Text(
+              text = "Clear All",
+              fontSize = 12.sp,
+              fontWeight = FontWeight.Bold,
+              color = Color(0xFFEF4444)
+            )
+          }
+        }
+      }
+    }
+
     // Section Header
     item {
       Row(
@@ -486,7 +536,8 @@ fun ServersScreen(
         onSelect = { onServerSelect(server, false) },
         onConnect = { onServerSelect(server, true) },
         onInfoClick = { serverDetailToInspect = server },
-        onToggleFavorite = { onToggleFavorite(server.id) }
+        onToggleFavorite = { onToggleFavorite(server.id) },
+        onDelete = { onDeleteServer(server.id) }
       )
     }
   }
@@ -608,7 +659,8 @@ private fun ServerListItem(
   onSelect: () -> Unit,
   onConnect: () -> Unit,
   onInfoClick: () -> Unit,
-  onToggleFavorite: () -> Unit
+  onToggleFavorite: () -> Unit,
+  onDelete: () -> Unit
 ) {
   val shape = RoundedCornerShape(16.dp)
 
@@ -723,11 +775,27 @@ private fun ServerListItem(
       }
     }
 
-    // Action buttons: Info, Favorite, Connect
+    // Action buttons: Delete (if imported), Info, Favorite, Connect
     Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+      if (server.isImported) {
+        IconButton(
+          onClick = onDelete,
+          modifier = Modifier
+            .size(32.dp)
+            .testTag("delete_server_${server.id}")
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.Delete,
+            contentDescription = "Delete Server",
+            tint = Color(0xFFEF4444).copy(alpha = 0.85f),
+            modifier = Modifier.size(17.dp)
+          )
+        }
+      }
+
       IconButton(
         onClick = onInfoClick,
         modifier = Modifier.size(32.dp)

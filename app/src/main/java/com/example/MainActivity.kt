@@ -47,7 +47,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.VpnScreen
 import com.example.ui.components.ZvpnAppBar
 import com.example.ui.components.ZvpnBottomBar
-import com.example.ui.dialogs.NotificationsDialog
+import com.example.ui.dialogs.ImportConfigDialog
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.ServersScreen
 import com.example.ui.screens.SettingsScreen
@@ -81,7 +81,7 @@ fun ZvpnApp(
   viewModel: VpnViewModel = viewModel()
 ) {
   var currentScreen by remember { mutableStateOf(VpnScreen.HOME) }
-  var showNotificationsDialog by remember { mutableStateOf(false) }
+  var showImportDialog by remember { mutableStateOf(false) }
 
   val vpnStatus by viewModel.vpnStatus.collectAsState()
   val selectedServer by viewModel.selectedServer.collectAsState()
@@ -135,7 +135,8 @@ fun ZvpnApp(
       androidx.compose.foundation.layout.Column(modifier = Modifier.fillMaxSize()) {
         // Shared App Bar
         ZvpnAppBar(
-          onNotificationsClick = { showNotificationsDialog = true }
+          onImportClick = { showImportDialog = true },
+          onTestPingClick = { viewModel.testPings() }
         )
 
         // Screen Content with smooth crossfade
@@ -173,6 +174,8 @@ fun ZvpnApp(
                     currentScreen = VpnScreen.HOME
                   },
                   onToggleFavorite = { viewModel.toggleFavorite(it) },
+                  onDeleteServer = { viewModel.deleteServer(it) },
+                  onClearAllImported = { viewModel.clearAllImportedServers() },
                   onBackClick = { currentScreen = VpnScreen.HOME }
                 )
               }
@@ -239,7 +242,13 @@ fun ZvpnApp(
     }
   }
 
-  if (showNotificationsDialog) {
-    NotificationsDialog(onDismiss = { showNotificationsDialog = false })
+  if (showImportDialog) {
+    ImportConfigDialog(
+      onDismiss = { showImportDialog = false },
+      onImport = { rawConfigs ->
+        viewModel.importConfigs(rawConfigs)
+        showImportDialog = false
+      }
+    )
   }
 }

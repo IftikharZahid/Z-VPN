@@ -32,7 +32,8 @@ data class Server(
   val category: ServerCategory = ServerCategory.ALL,
   val region: String = "Europe",
   val isFavorite: Boolean = false,
-  val protocolSupport: String = "WireGuard · OpenVPN"
+  val protocolSupport: String = "WireGuard · OpenVPN",
+  val isImported: Boolean = false
 )
 
 data class VpnTrafficPoint(

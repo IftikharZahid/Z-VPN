@@ -1,9 +1,6 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -81,17 +78,16 @@ fun HomeScreen(
   Column(
     modifier = modifier
       .fillMaxSize()
-      .verticalScroll(rememberScrollState())
-      .padding(horizontal = 20.dp, vertical = 10.dp),
+      .padding(horizontal = 20.dp, vertical = 16.dp),
     horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.SpaceBetween
+    verticalArrangement = Arrangement.spacedBy(24.dp)
   ) {
     // Top Hero section with Orb
     Column(
       horizontalAlignment = Alignment.CenterHorizontally,
       modifier = Modifier
         .fillMaxWidth()
-        .padding(top = 12.dp, bottom = 18.dp)
+        .padding(top = 8.dp, bottom = 4.dp)
     ) {
       ConnectionOrb(
         vpnStatus = vpnStatus,
@@ -126,7 +122,7 @@ fun HomeScreen(
     Column(
       modifier = Modifier
         .fillMaxWidth()
-        .padding(bottom = 12.dp),
+        .padding(bottom = 24.dp),
       verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
       // Selected Server Card

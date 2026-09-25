@@ -141,7 +141,7 @@ fun SettingsScreen(
               horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
               Text(
-                text = "Z-VPN PRO",
+                text = "ZVPN PRO",
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -267,7 +267,7 @@ fun SettingsScreen(
 
         SettingsClickableRow(
           icon = Icons.Rounded.Info,
-          title = "About Z-VPN",
+          title = "About ZVPN",
           subtitle = "Version 1.0.0 (Build 2026.09) · Zero Logs",
           onClick = { showAboutDialog = true }
         )
@@ -343,7 +343,7 @@ fun SettingsScreen(
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
           Text("User: xahidcodes@gmail.com", color = TextPrimary, fontSize = 14.sp)
-          Text("Plan: Z-VPN Unlimited Pro (Annual)", color = CyanAccent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+          Text("Plan: ZVPN Unlimited Pro (Annual)", color = CyanAccent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
           Text("Active Devices: 1 of 10 slots registered", color = TextMuted, fontSize = 12.sp)
           Text("Next Billing Date: September 23, 2027", color = TextMuted, fontSize = 12.sp)
         }
@@ -362,11 +362,11 @@ fun SettingsScreen(
       onDismissRequest = { showAboutDialog = false },
       containerColor = DarkSurfaceElevated,
       title = {
-        Text("About Z-VPN", color = TextPrimary, fontWeight = FontWeight.Bold)
+        Text("About ZVPN", color = TextPrimary, fontWeight = FontWeight.Bold)
       },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("Z-VPN Client v1.0.0", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+          Text("ZVPN Client v1.0.0", color = TextPrimary, fontWeight = FontWeight.SemiBold)
           Text("Built with modern Jetpack Compose for uncompromising speed, privacy, and aesthetic clarity.", color = TextMuted, fontSize = 13.sp)
           Text("Strict No-Logs Guarantee: Audited independent RAM-only infrastructure.", color = OkEmerald, fontSize = 12.sp)
         }

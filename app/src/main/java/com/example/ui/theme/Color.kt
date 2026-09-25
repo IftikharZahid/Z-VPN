@@ -2,7 +2,7 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Z-VPN Premium Dark Theme Palette
+// ZVPN Premium Dark Theme Palette
 val DarkBgStart = Color(0xFF16233E)
 val DarkBgMid = Color(0xFF0B1220)
 val DarkBgEnd = Color(0xFF070B13)

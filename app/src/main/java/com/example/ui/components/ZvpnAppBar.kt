@@ -13,7 +13,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.NetworkPing
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -27,12 +28,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CyanAccent
+import com.example.ui.theme.OkEmerald
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPrimary
 
 @Composable
 fun ZvpnAppBar(
-  onNotificationsClick: () -> Unit,
+  onImportClick: () -> Unit,
+  onTestPingClick: () -> Unit,
   modifier: Modifier = Modifier
 ) {
   Row(
@@ -66,7 +69,7 @@ fun ZvpnAppBar(
       }
 
       Text(
-        text = "Z-VPN",
+        text = "ZVPN",
         color = TextPrimary,
         fontSize = 19.sp,
         fontWeight = FontWeight.Bold,
@@ -74,33 +77,48 @@ fun ZvpnAppBar(
       )
     }
 
-    // Actions - Notification button only
-    Box(
-      modifier = Modifier
-        .size(38.dp)
-        .clip(RoundedCornerShape(12.dp))
-        .background(Color(0x0EFFFFFF))
-        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(12.dp))
-        .clickable(onClick = onNotificationsClick)
-        .testTag("app_bar_notifications_button"),
-      contentAlignment = Alignment.Center
+    // Actions - Ping Test and Plus Import buttons
+    Row(
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-      Icon(
-        imageVector = Icons.Outlined.Notifications,
-        contentDescription = "Notifications",
-        tint = TextMuted,
-        modifier = Modifier.size(19.dp)
-      )
-
-      // Unread badge dot
+      // Ping Test Button
       Box(
         modifier = Modifier
-          .size(7.dp)
-          .align(Alignment.TopEnd)
-          .padding(end = 4.dp, top = 4.dp)
-          .clip(CircleShape)
-          .background(CyanAccent)
-      )
+          .size(38.dp)
+          .clip(RoundedCornerShape(12.dp))
+          .background(OkEmerald.copy(alpha = 0.15f))
+          .border(1.dp, OkEmerald.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+          .clickable(onClick = onTestPingClick)
+          .testTag("app_bar_test_ping_button"),
+        contentAlignment = Alignment.Center
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.NetworkPing,
+          contentDescription = "Test Ping & Real Delay",
+          tint = OkEmerald,
+          modifier = Modifier.size(20.dp)
+        )
+      }
+
+      // Plus Import Button
+      Box(
+        modifier = Modifier
+          .size(38.dp)
+          .clip(RoundedCornerShape(12.dp))
+          .background(CyanAccent.copy(alpha = 0.15f))
+          .border(1.dp, CyanAccent.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+          .clickable(onClick = onImportClick)
+          .testTag("app_bar_import_button"),
+        contentAlignment = Alignment.Center
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.Add,
+          contentDescription = "Import Configuration",
+          tint = CyanAccent,
+          modifier = Modifier.size(20.dp)
+        )
+      }
     }
   }
 }

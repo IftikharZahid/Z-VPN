@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Z-VPN"
+rootProject.name = "ZVPN"
 
 include(":app")
