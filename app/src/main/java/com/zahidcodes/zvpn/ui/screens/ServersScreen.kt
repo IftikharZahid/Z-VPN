@@ -6,9 +6,11 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,9 +43,12 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -117,15 +122,15 @@ fun ServersScreen(
   onAddManualClick: (() -> Unit)? = null,
   onUploadFirestore: () -> Unit = {},
   schemaJson: String = "",
+  onUpdateServer: (Server) -> Unit = {},
+  onRestoreDefaults: () -> Unit = {},
   onBackClick: (() -> Unit)? = null,
   modifier: Modifier = Modifier
 ) {
   var serverDetailToInspect by remember { mutableStateOf<Server?>(null) }
-  var showSortDialog by remember { mutableStateOf(false) }
-  var showFirestoreFormatDialog by remember { mutableStateOf(false) }
   var serverToDelete by remember { mutableStateOf<Server?>(null) }
-  var showDeleteAllDialog by remember { mutableStateOf(false) }
-  var showPlusMenu by remember { mutableStateOf(false) }
+  var serverToEdit by remember { mutableStateOf<Server?>(null) }
+  var showDeleteAllDialogLocal by remember { mutableStateOf(false) }
 
   // Filter list
   val filteredServers = servers.filter { server ->
@@ -219,137 +224,55 @@ fun ServersScreen(
           }
         }
 
-        // Single Top-Right Plus Button with Comprehensive Dropdown Menu
-        Box(
-          modifier = Modifier
-            .size(36.dp)
-            .clip(RoundedCornerShape(10.dp))
-            .background(
-              Brush.linearGradient(
-                colors = listOf(Color(0xFF132845), Color(0xFF0D1B2D))
-              )
-            )
-            .border(1.dp, CyanAccent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-            .clickable { showPlusMenu = true }
-            .testTag("servers_screen_plus_menu_button"),
-          contentAlignment = Alignment.Center
-        ) {
-          Icon(
-            imageVector = Icons.Rounded.Add,
-            contentDescription = "Server Actions & Management Menu",
-            tint = CyanAccent,
-            modifier = Modifier.size(20.dp)
-          )
-
-          DropdownMenu(
-            expanded = showPlusMenu,
-            onDismissRequest = { showPlusMenu = false },
+        // Header Action: Delete All Configurations Button
+        if (servers.isNotEmpty()) {
+          Box(
             modifier = Modifier
-              .background(Color(0xFF0F2035))
-              .border(1.dp, Color(0x3300F0FF), RoundedCornerShape(8.dp))
-              .testTag("servers_plus_dropdown_menu")
+              .clip(RoundedCornerShape(8.dp))
+              .background(Color(0xFF2A151C))
+              .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+              .clickable { showDeleteAllDialogLocal = true }
+              .padding(horizontal = 9.dp, vertical = 5.dp)
+              .testTag("servers_screen_delete_all_btn"),
+            contentAlignment = Alignment.Center
           ) {
-            // Option 1: Import Config Link / URI
-            DropdownMenuItem(
-              text = {
-                Column {
-                  Text("Import Config Link / URI", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("VLESS, Trojan, VMess, WireGuard link", color = TextMuted, fontSize = 10.5.sp)
-                }
-              },
-              leadingIcon = {
-                Icon(Icons.Rounded.Link, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
-              },
-              onClick = {
-                showPlusMenu = false
-                onImportClick?.invoke()
-              }
-            )
-
-            // Option 2: Add Server Manually
-            DropdownMenuItem(
-              text = {
-                Column {
-                  Text("Add Server Manually", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("Host, port, protocol & connect", color = TextMuted, fontSize = 10.5.sp)
-                }
-              },
-              leadingIcon = {
-                Icon(Icons.Rounded.Dns, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
-              },
-              onClick = {
-                showPlusMenu = false
-                onAddManualClick?.invoke()
-              }
-            )
-
-            // Option 3: Filter & Sort Servers
-            DropdownMenuItem(
-              text = {
-                Column {
-                  Text("Filter & Sort Servers", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("Sort by ping, load, country or name", color = TextMuted, fontSize = 10.5.sp)
-                }
-              },
-              leadingIcon = {
-                Icon(Icons.Rounded.Tune, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
-              },
-              onClick = {
-                showPlusMenu = false
-                showSortDialog = true
-              }
-            )
-
-            // Option 4: Delete / Clear Configurations
-            if (servers.isNotEmpty()) {
-              DropdownMenuItem(
-                text = {
-                  Column {
-                    Text("Delete / Clear Configurations", color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                    Text("Remove imported or all server nodes", color = TextMuted, fontSize = 10.5.sp)
-                  }
-                },
-                leadingIcon = {
-                  Icon(Icons.Rounded.DeleteSweep, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-                },
-                onClick = {
-                  showPlusMenu = false
-                  showDeleteAllDialog = true
-                }
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.DeleteSweep,
+                contentDescription = "Delete All Configurations",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(15.dp)
+              )
+              Text(
+                text = "Delete All",
+                color = Color(0xFFEF4444),
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Bold
               )
             }
-
-            // Option 5: Firestore Cloud Sync & Formats
-            DropdownMenuItem(
-              text = {
-                Column {
-                  Text("Sync Firestore Database", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                  Text("View & upload cloud server schema", color = TextMuted, fontSize = 10.5.sp)
-                }
-              },
-              leadingIcon = {
-                Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
-              },
-              onClick = {
-                showPlusMenu = false
-                showFirestoreFormatDialog = true
-              }
-            )
           }
         }
       }
     }
 
-    // High-Tech Compact Search Bar Component
+    // High-Tech Compact Search Bar Component (Adjusted text size & padding)
     item {
       OutlinedTextField(
         value = searchQuery,
         onValueChange = onSearchChange,
+        textStyle = androidx.compose.ui.text.TextStyle(
+          fontSize = 12.sp,
+          fontWeight = FontWeight.Medium,
+          color = TextPrimary
+        ),
         placeholder = {
           Text(
             text = "Search location, city, IP or protocol...",
             color = TextMuted,
-            fontSize = 11.5.sp
+            fontSize = 12.sp
           )
         },
         leadingIcon = {
@@ -357,37 +280,38 @@ fun ServersScreen(
             imageVector = Icons.Outlined.Search,
             contentDescription = "Search",
             tint = CyanAccent,
-            modifier = Modifier.size(15.dp)
+            modifier = Modifier.size(16.dp)
           )
         },
         trailingIcon = {
           if (searchQuery.isNotEmpty()) {
             IconButton(
               onClick = { onSearchChange("") },
-              modifier = Modifier.size(28.dp)
+              modifier = Modifier.size(26.dp)
             ) {
               Icon(
                 imageVector = Icons.Rounded.Close,
                 contentDescription = "Clear",
                 tint = TextMuted,
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(13.dp)
               )
             }
           }
         },
         colors = OutlinedTextFieldDefaults.colors(
-          focusedContainerColor = Color(0xFF0D1B2D),
-          unfocusedContainerColor = Color(0xFF0D1B2D),
+          focusedContainerColor = Color(0xFF091424),
+          unfocusedContainerColor = Color(0xFF091424),
           focusedBorderColor = CyanAccent,
           unfocusedBorderColor = DarkSurfaceStroke,
           focusedTextColor = TextPrimary,
-          unfocusedTextColor = TextPrimary
+          unfocusedTextColor = TextPrimary,
+          cursorColor = CyanAccent
         ),
         shape = RoundedCornerShape(10.dp),
         singleLine = true,
         modifier = Modifier
           .fillMaxWidth()
-          .height(40.dp)
+          .height(42.dp)
           .testTag("server_search_input")
       )
     }
@@ -451,7 +375,7 @@ fun ServersScreen(
       Row(
         modifier = Modifier
           .fillMaxWidth()
-          .padding(top = 2.dp, bottom = 1.dp),
+          .padding(top = 2.dp, bottom = 2.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
       ) {
@@ -465,76 +389,171 @@ fun ServersScreen(
 
         Row(
           verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(4.dp)
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-          if (servers.any { it.isImported }) {
-            TextButton(
-              onClick = { showDeleteAllDialog = true },
-              contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
-              modifier = Modifier.testTag("clear_imported_configs_button")
+          if (servers.isNotEmpty()) {
+            Row(
+              modifier = Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .clickable { showDeleteAllDialogLocal = true }
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
               Icon(
                 imageVector = Icons.Rounded.DeleteSweep,
-                contentDescription = "Delete Configs",
+                contentDescription = null,
                 tint = Color(0xFFEF4444),
-                modifier = Modifier.size(13.dp)
+                modifier = Modifier.size(12.dp)
               )
-              Spacer(modifier = Modifier.width(3.dp))
               Text(
-                text = "Delete All Imported",
+                text = "Delete",
+                fontSize = 9.5.sp,
                 color = Color(0xFFEF4444),
-                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
               )
             }
-          } else if (servers.isNotEmpty()) {
-            TextButton(
-              onClick = { showDeleteAllDialog = true },
-              contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
-              modifier = Modifier.testTag("clear_all_configs_button")
-            ) {
-              Icon(
-                imageVector = Icons.Rounded.DeleteSweep,
-                contentDescription = "Clear All",
-                tint = Color(0xFFEF4444),
-                modifier = Modifier.size(13.dp)
-              )
-              Spacer(modifier = Modifier.width(3.dp))
-              Text(
-                text = "Clear All",
-                color = Color(0xFFEF4444),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-              )
-            }
+            Text(text = "·", fontSize = 9.sp, color = TextMuted)
           }
 
           Text(
+            text = "Tap Edit / Hold 2-3s",
+            fontSize = 9.5.sp,
+            color = CyanAccent.copy(alpha = 0.9f),
+            fontWeight = FontWeight.SemiBold
+          )
+          Text(
             text = "· Live Delay",
-            fontSize = 10.sp,
+            fontSize = 9.5.sp,
             color = TextMuted
           )
         }
       }
     }
 
-    // Server List Items
-    items(filteredServers, key = { it.id }) { server ->
-      val isSelected = server.id == selectedServer.id
-      val isPinging = pingingServerIds.contains(server.id)
+    // Server List Items or Compact Empty State
+    if (filteredServers.isEmpty()) {
+      item {
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 36.dp, horizontal = 16.dp),
+          contentAlignment = Alignment.Center
+        ) {
+          Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+          ) {
+            Box(
+              modifier = Modifier
+                .size(54.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF0F2035))
+                .border(1.dp, CyanAccent.copy(alpha = 0.4f), CircleShape),
+              contentAlignment = Alignment.Center
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.Dns,
+                contentDescription = null,
+                tint = CyanAccent,
+                modifier = Modifier.size(26.dp)
+              )
+            }
 
-      ProfessionalServerListItem(
-        server = server,
-        isSelected = isSelected,
-        isPinging = isPinging,
-        onSelect = { onServerSelect(server, true) },
-        onConnect = { onServerSelect(server, true) },
-        onPingClick = { onPingServer(server.id) },
-        onInfoClick = { serverDetailToInspect = server },
-        onToggleFavorite = { onToggleFavorite(server.id) },
-        onDelete = { serverToDelete = server }
-      )
+            Text(
+              text = if (servers.isEmpty()) "No Server Configurations" else "No Matching Locations",
+              fontSize = 15.sp,
+              fontWeight = FontWeight.Bold,
+              color = TextPrimary
+            )
+
+            Text(
+              text = if (servers.isEmpty())
+                "All server configurations have been deleted. Import a new link or restore defaults below."
+              else
+                "No servers found matching \"$searchQuery\". Try a different search keyword.",
+              fontSize = 11.5.sp,
+              color = TextMuted,
+              textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+              modifier = Modifier.padding(horizontal = 20.dp)
+            )
+
+            if (servers.isEmpty()) {
+              Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 6.dp)
+              ) {
+                Button(
+                  onClick = { onImportClick?.invoke() },
+                  colors = ButtonDefaults.buttonColors(containerColor = VibrantBlue),
+                  shape = RoundedCornerShape(8.dp)
+                ) {
+                  Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(15.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text("Import Config", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Button(
+                  onClick = onRestoreDefaults,
+                  colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B)),
+                  shape = RoundedCornerShape(8.dp)
+                ) {
+                  Icon(Icons.Rounded.CloudSync, contentDescription = null, modifier = Modifier.size(15.dp))
+                  Spacer(modifier = Modifier.width(4.dp))
+                  Text("Restore Defaults", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                }
+              }
+            }
+          }
+        }
+      }
+    } else {
+      items(filteredServers, key = { it.id }) { server ->
+        val isSelected = server.id == selectedServer.id
+        val isPinging = pingingServerIds.contains(server.id)
+
+        ProfessionalServerListItem(
+          server = server,
+          isSelected = isSelected,
+          isPinging = isPinging,
+          onSelect = { onServerSelect(server, true) },
+          onConnect = { onServerSelect(server, true) },
+          onPingClick = { onPingServer(server.id) },
+          onInfoClick = { serverDetailToInspect = server },
+          onEditClick = { serverToEdit = server },
+          onLongClick = { serverToEdit = server },
+          onToggleFavorite = { onToggleFavorite(server.id) },
+          onDelete = { serverToDelete = server }
+        )
+      }
     }
+  }
+
+  // Delete All Dialog (Triggered from ServersScreen header or section button)
+  if (showDeleteAllDialogLocal) {
+    DeleteConfigurationsDialog(
+      servers = servers,
+      onClearAllImported = onClearAllImported,
+      onDeleteAll = onDeleteAll,
+      onDismiss = { showDeleteAllDialogLocal = false }
+    )
+  }
+
+  // Edit Server Dialog (Triggered on long-click 2-3s or edit button)
+  serverToEdit?.let { server ->
+    EditServerDialog(
+      server = server,
+      onDismiss = { serverToEdit = null },
+      onSave = { updated ->
+        onUpdateServer(updated)
+        serverToEdit = null
+      },
+      onDelete = { id ->
+        onDeleteServer(id)
+        serverToEdit = null
+      }
+    )
   }
 
   // Delete Single Server Confirmation Dialog
@@ -608,280 +627,7 @@ fun ServersScreen(
     )
   }
 
-  // Delete All / Bulk Configurations Dialog
-  if (showDeleteAllDialog) {
-    val importedCount = servers.count { it.isImported }
-    AlertDialog(
-      onDismissRequest = { showDeleteAllDialog = false },
-      containerColor = DarkSurfaceElevated,
-      title = {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Rounded.DeleteSweep,
-            contentDescription = null,
-            tint = Color(0xFFEF4444),
-            modifier = Modifier.size(24.dp)
-          )
-          Text("Delete Configurations", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        }
-      },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-          Text(
-            text = "Select deletion scope:",
-            color = TextMuted,
-            fontSize = 12.sp
-          )
 
-          if (importedCount > 0) {
-            Button(
-              onClick = {
-                onClearAllImported()
-                showDeleteAllDialog = false
-              },
-              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A151C)),
-              shape = RoundedCornerShape(8.dp),
-              modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .testTag("delete_all_imported_option_btn")
-            ) {
-              Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-              ) {
-                Icon(
-                  imageVector = Icons.Rounded.DeleteSweep,
-                  contentDescription = null,
-                  tint = Color(0xFFEF4444),
-                  modifier = Modifier.size(18.dp)
-                )
-                Column {
-                  Text(
-                    text = "Delete All Imported ($importedCount)",
-                    color = Color(0xFFEF4444),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 12.5.sp
-                  )
-                  Text(
-                    text = "Keeps default standard servers",
-                    color = TextMuted,
-                    fontSize = 10.sp
-                  )
-                }
-              }
-            }
-          }
-
-          Button(
-            onClick = {
-              onDeleteAll()
-              showDeleteAllDialog = false
-            },
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381418)),
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier
-              .fillMaxWidth()
-              .border(1.dp, Color(0xFFEF4444), RoundedCornerShape(8.dp))
-              .testTag("delete_everything_option_btn")
-          ) {
-            Row(
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.spacedBy(8.dp),
-              modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            ) {
-              Icon(
-                imageVector = Icons.Rounded.DeleteForever,
-                contentDescription = null,
-                tint = Color(0xFFEF4444),
-                modifier = Modifier.size(18.dp)
-              )
-              Column {
-                Text(
-                  text = "Delete All Servers (${servers.size})",
-                  color = Color.White,
-                  fontWeight = FontWeight.Bold,
-                  fontSize = 12.5.sp
-                )
-                Text(
-                  text = "Clears all configuration nodes from the list",
-                  color = Color(0xFFEF4444).copy(alpha = 0.8f),
-                  fontSize = 10.sp
-                )
-              }
-            }
-          }
-        }
-      },
-      confirmButton = {},
-      dismissButton = {
-        TextButton(onClick = { showDeleteAllDialog = false }) {
-          Text("Cancel", color = TextMuted, fontSize = 12.sp)
-        }
-      }
-    )
-  }
-
-  // Sort Dialog
-  if (showSortDialog) {
-    AlertDialog(
-      onDismissRequest = { showSortDialog = false },
-      containerColor = DarkSurfaceElevated,
-      title = {
-        Text("Sort Servers", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-      },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          ServerSortOption.entries.forEach { option ->
-            val isOptSelected = option == selectedSortOption
-            Row(
-              modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .clickable {
-                  onSortSelect(option)
-                  showSortDialog = false
-                }
-                .padding(vertical = 8.dp, horizontal = 8.dp),
-              verticalAlignment = Alignment.CenterVertically,
-              horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-              Text(
-                text = option.label,
-                fontSize = 13.sp,
-                fontWeight = if (isOptSelected) FontWeight.Bold else FontWeight.Normal,
-                color = if (isOptSelected) CyanAccent else TextPrimary
-              )
-              if (isOptSelected) {
-                Icon(
-                  imageVector = Icons.Rounded.Check,
-                  contentDescription = null,
-                  tint = CyanAccent,
-                  modifier = Modifier.size(16.dp)
-                )
-              }
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { showSortDialog = false }) {
-          Text("Done", color = CyanAccent, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-        }
-      }
-    )
-  }
-
-  // Firestore Database Formats Dialog
-  if (showFirestoreFormatDialog) {
-    val clipboardManager = LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-
-    AlertDialog(
-      onDismissRequest = { showFirestoreFormatDialog = false },
-      containerColor = DarkSurfaceElevated,
-      title = {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-          Icon(
-            imageVector = Icons.Rounded.CloudSync,
-            contentDescription = null,
-            tint = OkEmerald,
-            modifier = Modifier.size(22.dp)
-          )
-          Column {
-            Text("Firestore Database Formats", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Text("Collection: servers · Sample Configurations", color = TextMuted, fontSize = 11.sp)
-          }
-        }
-      },
-      text = {
-        Column(
-          modifier = Modifier.fillMaxWidth(),
-          verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-          Text(
-            text = "These sample server configs (VLESS, Trojan, VMess, WireGuard, Shadowsocks, Hysteria2) create the standard Firestore database schema for ZVPN:",
-            color = TextMuted,
-            fontSize = 11.5.sp,
-            lineHeight = 16.sp
-          )
-
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(240.dp)
-              .clip(RoundedCornerShape(8.dp))
-              .background(Color(0xFF060D17))
-              .border(1.dp, DarkSurfaceStroke, RoundedCornerShape(8.dp))
-              .padding(8.dp)
-          ) {
-            LazyColumn {
-              item {
-                Text(
-                  text = schemaJson,
-                  color = OkEmerald,
-                  fontSize = 10.sp,
-                  lineHeight = 14.sp,
-                  fontFamily = FontFamily.Monospace
-                )
-              }
-            }
-          }
-
-          Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-          ) {
-            Button(
-              onClick = {
-                onUploadFirestore()
-                showFirestoreFormatDialog = false
-              },
-              colors = ButtonDefaults.buttonColors(containerColor = VibrantBlue),
-              shape = RoundedCornerShape(8.dp),
-              modifier = Modifier.weight(1.1f)
-            ) {
-              Icon(Icons.Rounded.CloudSync, contentDescription = null, modifier = Modifier.size(15.dp))
-              Spacer(modifier = Modifier.width(4.dp))
-              Text("Upload to Firestore", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-
-            Button(
-              onClick = {
-                clipboardManager.setText(AnnotatedString(schemaJson))
-                copied = true
-              },
-              colors = ButtonDefaults.buttonColors(
-                containerColor = if (copied) OkEmerald else Color(0xFF1E293B)
-              ),
-              shape = RoundedCornerShape(8.dp),
-              modifier = Modifier.weight(0.9f)
-            ) {
-              Icon(
-                if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                contentDescription = null,
-                modifier = Modifier.size(15.dp)
-              )
-              Spacer(modifier = Modifier.width(4.dp))
-              Text(if (copied) "Copied!" else "Copy JSON", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-          }
-        }
-      },
-      confirmButton = {
-        TextButton(onClick = { showFirestoreFormatDialog = false }) {
-          Text("Close", color = CyanAccent, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-        }
-      }
-    )
-  }
 
   // Server Details Modal
   serverDetailToInspect?.let { server ->
@@ -982,6 +728,7 @@ private fun ServerSpecRow(label: String, value: String) {
   }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ProfessionalServerListItem(
   server: Server,
@@ -991,10 +738,13 @@ private fun ProfessionalServerListItem(
   onConnect: () -> Unit,
   onPingClick: () -> Unit,
   onInfoClick: () -> Unit,
+  onEditClick: () -> Unit,
+  onLongClick: () -> Unit,
   onToggleFavorite: () -> Unit,
   onDelete: () -> Unit
 ) {
   val shape = RoundedCornerShape(10.dp)
+  var showMoreMenu by remember { mutableStateOf(false) }
   val infiniteTransition = rememberInfiniteTransition(label = "pingRotation")
   val rotationAngle by infiniteTransition.animateFloat(
     initialValue = 0f,
@@ -1022,8 +772,11 @@ private fun ProfessionalServerListItem(
         if (isSelected) OkEmerald.copy(alpha = 0.7f) else DarkSurfaceStroke,
         shape
       )
-      .clickable(onClick = onSelect)
-      .padding(horizontal = 8.dp, vertical = 5.dp)
+      .combinedClickable(
+        onClick = onSelect,
+        onLongClick = onLongClick
+      )
+      .padding(horizontal = 8.dp, vertical = 6.dp)
       .testTag("server_item_${server.id}"),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1031,7 +784,7 @@ private fun ProfessionalServerListItem(
     // Fixed Width Left Active Status Bar (Zero Layout Shift)
     Box(
       modifier = Modifier
-        .size(width = 4.dp, height = 24.dp)
+        .size(width = 3.5.dp, height = 24.dp)
         .clip(RoundedCornerShape(2.dp))
         .background(if (isSelected) OkEmerald else Color.Transparent)
     )
@@ -1039,7 +792,7 @@ private fun ProfessionalServerListItem(
     // Flag Badge
     FlagBadge(
       countryCode = server.countryCode,
-      badgeSize = 25.dp
+      badgeSize = 24.dp
     )
 
     // Name & Ping info
@@ -1060,6 +813,22 @@ private fun ProfessionalServerListItem(
           overflow = TextOverflow.Ellipsis,
           modifier = Modifier.weight(1f, fill = false)
         )
+
+        if (server.isImported || server.id.startsWith("import-") || server.id == "vless-id-pusat-91") {
+          Box(
+            modifier = Modifier
+              .clip(RoundedCornerShape(3.dp))
+              .background(Color(0xFF7C3AED).copy(alpha = 0.22f))
+              .padding(horizontal = 4.dp, vertical = 0.5.dp)
+          ) {
+            Text(
+              text = "IMPORTED",
+              fontSize = 7.5.sp,
+              fontWeight = FontWeight.ExtraBold,
+              color = Color(0xFFA78BFA)
+            )
+          }
+        }
 
         if (server.isFavorite) {
           Icon(
@@ -1149,18 +918,18 @@ private fun ProfessionalServerListItem(
     // Action buttons & Active Indicator
     Row(
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(1.dp)
+      horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
       // Ping Test Button
       IconButton(
         onClick = onPingClick,
         modifier = Modifier
-          .size(24.dp)
+          .size(28.dp)
           .testTag("ping_server_${server.id}")
       ) {
         if (isPinging) {
           CircularProgressIndicator(
-            modifier = Modifier.size(11.dp),
+            modifier = Modifier.size(12.dp),
             color = CyanAccent,
             strokeWidth = 1.5.dp
           )
@@ -1169,50 +938,105 @@ private fun ProfessionalServerListItem(
             imageVector = Icons.Rounded.NetworkCheck,
             contentDescription = "Test Ping",
             tint = CyanAccent,
-            modifier = Modifier.size(14.dp)
+            modifier = Modifier.size(15.dp)
           )
         }
       }
 
-      // Delete Button for One-by-One Deletion
-      IconButton(
-        onClick = onDelete,
+      // Direct Visible Edit Pill Button
+      Box(
         modifier = Modifier
-          .size(26.dp)
-          .testTag("delete_server_${server.id}")
+          .clip(RoundedCornerShape(6.dp))
+          .background(CyanAccent.copy(alpha = 0.12f))
+          .border(1.dp, CyanAccent.copy(alpha = 0.4f), RoundedCornerShape(6.dp))
+          .clickable(onClick = onEditClick)
+          .padding(horizontal = 7.dp, vertical = 3.dp)
+          .testTag("edit_server_${server.id}"),
+        contentAlignment = Alignment.Center
       ) {
-        Icon(
-          imageVector = Icons.Rounded.Delete,
-          contentDescription = "Delete Configuration",
-          tint = if (server.isImported) Color(0xFFEF4444) else Color(0xFFEF4444).copy(alpha = 0.65f),
-          modifier = Modifier.size(15.dp)
-        )
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.Edit,
+            contentDescription = "Edit Configuration",
+            tint = CyanAccent,
+            modifier = Modifier.size(11.5.dp)
+          )
+          Text(
+            text = "Edit",
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = CyanAccent
+          )
+        }
       }
 
-      IconButton(
-        onClick = onInfoClick,
-        modifier = Modifier.size(24.dp)
-      ) {
-        Icon(
-          imageVector = Icons.Outlined.Info,
-          contentDescription = "Details",
-          tint = TextMuted2,
-          modifier = Modifier.size(13.dp)
-        )
-      }
+      // More Options Dropdown (Edit, Info, Favorite, Delete)
+      Box {
+        IconButton(
+          onClick = { showMoreMenu = true },
+          modifier = Modifier
+            .size(24.dp)
+            .testTag("more_options_server_${server.id}")
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.MoreVert,
+            contentDescription = "More Options",
+            tint = TextMuted,
+            modifier = Modifier.size(16.dp)
+          )
+        }
 
-      IconButton(
-        onClick = onToggleFavorite,
-        modifier = Modifier
-          .size(24.dp)
-          .testTag("server_favorite_${server.id}")
-      ) {
-        Icon(
-          imageVector = if (server.isFavorite) Icons.Default.Star else Icons.Outlined.StarBorder,
-          contentDescription = "Favorite",
-          tint = if (server.isFavorite) WarningAmber else TextMuted2,
-          modifier = Modifier.size(14.dp)
-        )
+        DropdownMenu(
+          expanded = showMoreMenu,
+          onDismissRequest = { showMoreMenu = false },
+          modifier = Modifier
+            .background(DarkSurfaceElevated)
+            .border(1.dp, DarkSurfaceStroke, RoundedCornerShape(8.dp))
+        ) {
+          DropdownMenuItem(
+            text = { Text("Edit Configuration", fontSize = 12.5.sp, color = TextPrimary, fontWeight = FontWeight.Medium) },
+            leadingIcon = {
+              Icon(Icons.Rounded.Edit, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(16.dp))
+            },
+            onClick = {
+              showMoreMenu = false
+              onEditClick()
+            }
+          )
+          DropdownMenuItem(
+            text = { Text("Server Details", fontSize = 12.5.sp, color = TextPrimary, fontWeight = FontWeight.Medium) },
+            leadingIcon = {
+              Icon(Icons.Outlined.Info, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(16.dp))
+            },
+            onClick = {
+              showMoreMenu = false
+              onInfoClick()
+            }
+          )
+          DropdownMenuItem(
+            text = { Text(if (server.isFavorite) "Remove from Favorites" else "Add to Favorites", fontSize = 12.5.sp, color = TextPrimary, fontWeight = FontWeight.Medium) },
+            leadingIcon = {
+              Icon(Icons.Rounded.Star, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(16.dp))
+            },
+            onClick = {
+              showMoreMenu = false
+              onToggleFavorite()
+            }
+          )
+          DropdownMenuItem(
+            text = { Text("Delete Configuration", fontSize = 12.5.sp, color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold) },
+            leadingIcon = {
+              Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
+            },
+            onClick = {
+              showMoreMenu = false
+              onDelete()
+            }
+          )
+        }
       }
 
       // Singular Clear Active Status Indicator vs Select Action
@@ -1221,8 +1045,8 @@ private fun ProfessionalServerListItem(
           modifier = Modifier
             .clip(RoundedCornerShape(6.dp))
             .background(OkEmerald.copy(alpha = 0.2f))
-            .border(1.dp, OkEmerald.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .border(1.dp, OkEmerald.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 7.dp, vertical = 3.dp)
             .testTag("server_connect_btn_${server.id}"),
           contentAlignment = Alignment.Center
         ) {
@@ -1249,14 +1073,14 @@ private fun ProfessionalServerListItem(
           onClick = onConnect,
           shape = RoundedCornerShape(6.dp),
           colors = ButtonDefaults.buttonColors(containerColor = VibrantBlue),
-          contentPadding = PaddingValues(horizontal = 8.dp, vertical = 1.dp),
+          contentPadding = PaddingValues(horizontal = 9.dp, vertical = 2.dp),
           modifier = Modifier
-            .height(24.dp)
+            .height(26.dp)
             .testTag("server_connect_btn_${server.id}")
         ) {
           Text(
             text = "Select",
-            fontSize = 10.sp,
+            fontSize = 10.5.sp,
             fontWeight = FontWeight.Bold,
             color = Color.White
           )
@@ -1265,3 +1089,494 @@ private fun ProfessionalServerListItem(
     }
   }
 }
+
+@Composable
+fun EditServerDialog(
+  server: Server,
+  onDismiss: () -> Unit,
+  onSave: (Server) -> Unit,
+  onDelete: (String) -> Unit
+) {
+  var name by remember { mutableStateOf(server.city) }
+  var ipAddress by remember { mutableStateOf(server.ipAddress) }
+  var portStr by remember { mutableStateOf(server.port.toString()) }
+  var protocol by remember { mutableStateOf(server.protocolSupport) }
+  var uuid by remember { mutableStateOf(server.uuid) }
+  var configUri by remember { mutableStateOf(server.configUri) }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = DarkSurfaceElevated,
+    title = {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.Edit,
+          contentDescription = null,
+          tint = CyanAccent,
+          modifier = Modifier.size(20.dp)
+        )
+        Column {
+          Text(
+            text = "Edit Configuration",
+            color = TextPrimary,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+          )
+          Text(
+            text = "${server.city} · ${server.country}",
+            color = TextMuted,
+            fontSize = 11.sp
+          )
+        }
+      }
+    },
+    text = {
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        OutlinedTextField(
+          value = name,
+          onValueChange = { name = it },
+          label = { Text("Config / Location Name", fontSize = 11.sp) },
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = CyanAccent,
+            unfocusedBorderColor = DarkSurfaceStroke,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary
+          ),
+          shape = RoundedCornerShape(8.dp),
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth().height(54.dp)
+        )
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          OutlinedTextField(
+            value = ipAddress,
+            onValueChange = { ipAddress = it },
+            label = { Text("Host / IP Address", fontSize = 11.sp) },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = CyanAccent,
+              unfocusedBorderColor = DarkSurfaceStroke,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(8.dp),
+            singleLine = true,
+            modifier = Modifier.weight(1.3f).height(54.dp)
+          )
+
+          OutlinedTextField(
+            value = portStr,
+            onValueChange = { portStr = it },
+            label = { Text("Port", fontSize = 11.sp) },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = CyanAccent,
+              unfocusedBorderColor = DarkSurfaceStroke,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(8.dp),
+            singleLine = true,
+            modifier = Modifier.weight(0.7f).height(54.dp)
+          )
+        }
+
+        OutlinedTextField(
+          value = protocol,
+          onValueChange = { protocol = it },
+          label = { Text("Protocol (VLESS, Trojan, VMess, etc.)", fontSize = 11.sp) },
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = CyanAccent,
+            unfocusedBorderColor = DarkSurfaceStroke,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary
+          ),
+          shape = RoundedCornerShape(8.dp),
+          singleLine = true,
+          modifier = Modifier.fillMaxWidth().height(54.dp)
+        )
+
+        if (uuid.isNotBlank() || server.configUri.isNotBlank()) {
+          OutlinedTextField(
+            value = uuid,
+            onValueChange = { uuid = it },
+            label = { Text("UUID / Password / Key", fontSize = 11.sp) },
+            colors = OutlinedTextFieldDefaults.colors(
+              focusedBorderColor = CyanAccent,
+              unfocusedBorderColor = DarkSurfaceStroke,
+              focusedTextColor = TextPrimary,
+              unfocusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(8.dp),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().height(54.dp)
+          )
+        }
+
+        OutlinedTextField(
+          value = configUri,
+          onValueChange = { configUri = it },
+          label = { Text("Config URI (Optional)", fontSize = 11.sp) },
+          colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = CyanAccent,
+            unfocusedBorderColor = DarkSurfaceStroke,
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary
+          ),
+          shape = RoundedCornerShape(8.dp),
+          maxLines = 2,
+          modifier = Modifier.fillMaxWidth().height(60.dp)
+        )
+      }
+    },
+    confirmButton = {
+      Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+      ) {
+        IconButton(
+          onClick = {
+            onDelete(server.id)
+            onDismiss()
+          },
+          modifier = Modifier.size(36.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.Delete,
+            contentDescription = "Delete",
+            tint = Color(0xFFEF4444)
+          )
+        }
+
+        Button(
+          onClick = {
+            val parsedPort = portStr.toIntOrNull() ?: server.port
+            val updated = server.copy(
+              city = name.trim().ifBlank { server.city },
+              ipAddress = ipAddress.trim().ifBlank { server.ipAddress },
+              port = parsedPort,
+              protocolSupport = protocol.trim().ifBlank { server.protocolSupport },
+              uuid = uuid.trim().ifBlank { server.uuid },
+              configUri = configUri.trim().ifBlank { server.configUri }
+            )
+            onSave(updated)
+            onDismiss()
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = VibrantBlue),
+          shape = RoundedCornerShape(8.dp)
+        ) {
+          Icon(imageVector = Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(15.dp))
+          Spacer(modifier = Modifier.width(4.dp))
+          Text("Save Changes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
+      }
+    },
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel", color = TextMuted, fontSize = 12.sp)
+      }
+    }
+  )
+}
+
+@Composable
+fun ServerSortDialog(
+  selectedSortOption: ServerSortOption,
+  onSortSelect: (ServerSortOption) -> Unit,
+  onDismiss: () -> Unit
+) {
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = DarkSurfaceElevated,
+    title = {
+      Text("Sort Servers", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+    },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        ServerSortOption.entries.forEach { option ->
+          val isOptSelected = option == selectedSortOption
+          Row(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(8.dp))
+              .clickable {
+                onSortSelect(option)
+                onDismiss()
+              }
+              .padding(vertical = 8.dp, horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            Text(
+              text = option.label,
+              fontSize = 13.sp,
+              fontWeight = if (isOptSelected) FontWeight.Bold else FontWeight.Normal,
+              color = if (isOptSelected) CyanAccent else TextPrimary
+            )
+            if (isOptSelected) {
+              Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = CyanAccent,
+                modifier = Modifier.size(16.dp)
+              )
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Done", color = CyanAccent, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+      }
+    }
+  )
+}
+
+@Composable
+fun DeleteConfigurationsDialog(
+  servers: List<Server>,
+  onClearAllImported: () -> Unit,
+  onDeleteAll: () -> Unit,
+  onDismiss: () -> Unit
+) {
+  val importedCount = servers.count {
+    it.isImported || it.id.startsWith("import-") || it.id.startsWith("manual-") || it.id == "vless-id-pusat-91" || it.id.contains("import")
+  }
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = DarkSurfaceElevated,
+    title = {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.DeleteSweep,
+          contentDescription = null,
+          tint = Color(0xFFEF4444),
+          modifier = Modifier.size(24.dp)
+        )
+        Text("Delete Configurations", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+      }
+    },
+    text = {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+          text = "Choose an option to delete server configurations:",
+          color = TextMuted,
+          fontSize = 12.sp
+        )
+
+        // Option A: Delete All Imported Configurations
+        Button(
+          onClick = {
+            onClearAllImported()
+            onDismiss()
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF2A151C)
+          ),
+          shape = RoundedCornerShape(8.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+            .testTag("delete_all_imported_option_btn")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.DeleteSweep,
+              contentDescription = null,
+              tint = Color(0xFFEF4444),
+              modifier = Modifier.size(20.dp)
+            )
+            Column {
+              Text(
+                text = "Delete All Imported ($importedCount)",
+                color = Color(0xFFEF4444),
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+              )
+              Text(
+                text = if (importedCount > 0) "Removes all $importedCount imported configs, keeps default nodes" else "No imported configs present (tap to clear)",
+                color = TextMuted,
+                fontSize = 10.5.sp
+              )
+            }
+          }
+        }
+
+        // Option B: Delete All Servers (Completely clear everything)
+        Button(
+          onClick = {
+            onDeleteAll()
+            onDismiss()
+          },
+          colors = ButtonDefaults.buttonColors(
+            containerColor = Color(0xFF381418)
+          ),
+          shape = RoundedCornerShape(8.dp),
+          modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFEF4444), RoundedCornerShape(8.dp))
+            .testTag("delete_everything_option_btn")
+        ) {
+          Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+          ) {
+            Icon(
+              imageVector = Icons.Rounded.DeleteForever,
+              contentDescription = null,
+              tint = Color(0xFFEF4444),
+              modifier = Modifier.size(20.dp)
+            )
+            Column {
+              Text(
+                text = "Delete All Servers (${servers.size})",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+              )
+              Text(
+                text = "Completely clears all configuration nodes from the app",
+                color = Color(0xFFEF4444).copy(alpha = 0.85f),
+                fontSize = 10.5.sp
+              )
+            }
+          }
+        }
+      }
+    },
+    confirmButton = {},
+    dismissButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Cancel", color = TextMuted, fontSize = 12.sp)
+      }
+    }
+  )
+}
+
+@Composable
+fun FirestoreSchemaDialog(
+  schemaJson: String,
+  onUploadFirestore: () -> Unit,
+  onDismiss: () -> Unit
+) {
+  val clipboardManager = LocalClipboardManager.current
+  var copied by remember { mutableStateOf(false) }
+
+  AlertDialog(
+    onDismissRequest = onDismiss,
+    containerColor = DarkSurfaceElevated,
+    title = {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.CloudSync,
+          contentDescription = null,
+          tint = OkEmerald,
+          modifier = Modifier.size(22.dp)
+        )
+        Column {
+          Text("Firestore Database Formats", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+          Text("Collection: servers · Sample Configurations", color = TextMuted, fontSize = 11.sp)
+        }
+      }
+    },
+    text = {
+      Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+      ) {
+        Text(
+          text = "These sample server configs (VLESS, Trojan, VMess, WireGuard, Shadowsocks, Hysteria2) create the standard Firestore database schema for ZVPN:",
+          color = TextMuted,
+          fontSize = 11.5.sp,
+          lineHeight = 16.sp
+        )
+
+        Box(
+          modifier = Modifier
+            .fillMaxWidth()
+            .height(240.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF060D17))
+            .border(1.dp, DarkSurfaceStroke, RoundedCornerShape(8.dp))
+            .padding(8.dp)
+        ) {
+          LazyColumn {
+            item {
+              Text(
+                text = schemaJson,
+                color = OkEmerald,
+                fontSize = 10.sp,
+                lineHeight = 14.sp,
+                fontFamily = FontFamily.Monospace
+              )
+            }
+          }
+        }
+
+        Row(
+          modifier = Modifier.fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Button(
+            onClick = {
+              onUploadFirestore()
+              onDismiss()
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = VibrantBlue),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(1.1f)
+          ) {
+            Icon(Icons.Rounded.CloudSync, contentDescription = null, modifier = Modifier.size(15.dp))
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Upload to Firestore", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+          }
+
+          Button(
+            onClick = {
+              clipboardManager.setText(AnnotatedString(schemaJson))
+              copied = true
+            },
+            colors = ButtonDefaults.buttonColors(
+              containerColor = if (copied) OkEmerald else Color(0xFF1E293B)
+            ),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.weight(0.9f)
+          ) {
+            Icon(
+              if (copied) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
+              contentDescription = null,
+              modifier = Modifier.size(15.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(if (copied) "Copied!" else "Copy JSON", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+          }
+        }
+      }
+    },
+    confirmButton = {
+      TextButton(onClick = onDismiss) {
+        Text("Close", color = CyanAccent, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+      }
+    }
+  )
+}
+

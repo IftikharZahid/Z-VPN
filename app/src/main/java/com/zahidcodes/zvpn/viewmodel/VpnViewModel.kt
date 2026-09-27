@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import kotlin.random.Random
@@ -30,6 +31,9 @@ import kotlin.random.Random
 class VpnViewModel : ViewModel() {
 
   private var originalIspIp = ""
+  private var userClearedAllServers = false
+  private var userClearedAllImported = false
+  private val deletedServerIds = mutableSetOf<String>()
 
   private val defaultServersList = listOf(
     Server(
@@ -44,6 +48,7 @@ class VpnViewModel : ViewModel() {
       region = "Asia-Pacific",
       protocolSupport = "VLESS · WS · TLS",
       isFavorite = true,
+      isImported = true,
       configUri = "vless://1a5b24bc-6180-4fa7-922d-ba7ee8a7a2b7@103.18.49.100:443?path=%2Fid-pusat&security=tls&alpn=http%2F1.1&encryption=none&insecure=0&host=support.zoom.us.cyylr.eu.cc&fp=chrome&type=ws&allowInsecure=0&sni=support.zoom.us.cyylr.eu.cc#canfingV2rayNG-91",
       port = 443,
       uuid = "1a5b24bc-6180-4fa7-922d-ba7ee8a7a2b7"
@@ -463,14 +468,23 @@ class VpnViewModel : ViewModel() {
                 null
               }
             }
-            if (remoteServers.isNotEmpty()) {
+            if (remoteServers.isNotEmpty() && !userClearedAllServers) {
+              val filteredRemote = remoteServers.filterNot { remote ->
+                deletedServerIds.contains(remote.id) ||
+                (userClearedAllImported && (remote.isImported || remote.id.startsWith("import-") || remote.id.startsWith("manual-")))
+              }
               _servers.update { currentList ->
-                val imported = currentList.filter { it.isImported }
-                val combined = (imported + remoteServers + defaultServersList).distinctBy { it.id }
-                if (combined.none { s -> s.id == _selectedServer.value.id }) {
-                  combined.firstOrNull()?.let { fallback -> _selectedServer.value = fallback }
+                if (userClearedAllServers) {
+                  emptyList()
+                } else {
+                  val imported = currentList.filter { it.isImported && !deletedServerIds.contains(it.id) && !userClearedAllImported }
+                  val defaults = defaultServersList.filterNot { deletedServerIds.contains(it.id) }
+                  val combined = (imported + filteredRemote + defaults).distinctBy { it.id }
+                  if (combined.none { s -> s.id == _selectedServer.value.id }) {
+                    combined.firstOrNull()?.let { fallback -> _selectedServer.value = fallback }
+                  }
+                  combined
                 }
-                combined
               }
             }
           }
@@ -694,7 +708,7 @@ class VpnViewModel : ViewModel() {
   private val _pingingServerIds = MutableStateFlow<Set<String>>(emptySet())
   val pingingServerIds: StateFlow<Set<String>> = _pingingServerIds.asStateFlow()
 
-  private val _settings = MutableStateFlow(VpnSettings())
+  private val _settings = MutableStateFlow(VpnStateManager.settings.value)
   val settings: StateFlow<VpnSettings> = _settings.asStateFlow()
 
   fun toggleConnection(context: Context? = null) {
@@ -867,25 +881,40 @@ class VpnViewModel : ViewModel() {
     val previous = _settings.value
     val updated = transform(previous)
     _settings.value = updated
+    VpnStateManager.updateSettings(updated)
 
-    if (!previous.killSwitchEnabled && updated.killSwitchEnabled) {
-      _statusMessage.value = "Kill Switch Enabled: Blocking unencrypted leak vectors."
+    if (!previous.forceStealthProtocol && updated.forceStealthProtocol) {
+      _statusMessage.value = "Force Stealth Mode Enabled: Bypassing DPI & censorship firewalls."
+    } else if (previous.forceStealthProtocol && !updated.forceStealthProtocol) {
+      _statusMessage.value = "Force Stealth Mode Disabled."
+    } else if (!previous.killSwitchEnabled && updated.killSwitchEnabled) {
+      _statusMessage.value = "Kill Switch Enabled: Blocking all unencrypted leak vectors."
     } else if (previous.killSwitchEnabled && !updated.killSwitchEnabled) {
       _statusMessage.value = "Kill Switch Disabled."
     } else if (!previous.autoConnectWifi && updated.autoConnectWifi) {
-      _statusMessage.value = "Auto-Connect on Wi-Fi Enabled."
+      _statusMessage.value = "Auto-Connect on Wi-Fi Enabled: Automatically encrypting untrusted networks."
       if (_vpnStatus.value == VpnStatus.DISCONNECTED) {
         connect()
       }
+    } else if (previous.autoConnectWifi && !updated.autoConnectWifi) {
+      _statusMessage.value = "Auto-Connect on Wi-Fi Disabled."
+    } else if (!previous.splitTunnelingEnabled && updated.splitTunnelingEnabled) {
+      _statusMessage.value = "Split Tunneling Enabled: Bypassing selected local applications."
+    } else if (previous.splitTunnelingEnabled && !updated.splitTunnelingEnabled) {
+      _statusMessage.value = "Split Tunneling Disabled: 100% full-device tunnel."
+    } else if (!previous.adBlockerEnabled && updated.adBlockerEnabled) {
+      _statusMessage.value = "CyberShield Enabled: Real-time Ad, Phishing & Malware DNS filtering."
+    } else if (previous.adBlockerEnabled && !updated.adBlockerEnabled) {
+      _statusMessage.value = "CyberShield Disabled."
+    } else if (!previous.dnsLeakProtection && updated.dnsLeakProtection) {
+      _statusMessage.value = "DNS Leak Protection Enabled: Zero-log encrypted DNS active."
+    } else if (previous.dnsLeakProtection && !updated.dnsLeakProtection) {
+      _statusMessage.value = "DNS Leak Protection Disabled."
     } else if (previous.protocol != updated.protocol) {
       _statusMessage.value = "Protocol set to ${updated.protocol}. Re-establishing tunnel..."
       if (_vpnStatus.value == VpnStatus.CONNECTED) {
         connect()
       }
-    } else if (!previous.adBlockerEnabled && updated.adBlockerEnabled) {
-      _statusMessage.value = "CyberShield Ad & Malware Blocker Enabled."
-    } else if (!previous.dnsLeakProtection && updated.dnsLeakProtection) {
-      _statusMessage.value = "DNS Leak Protection Enabled."
     }
   }
 
@@ -997,6 +1026,7 @@ class VpnViewModel : ViewModel() {
         }
 
         if (newlyImportedServers.isNotEmpty()) {
+          userClearedAllServers = false
           _servers.update { current ->
             (newlyImportedServers + current).distinctBy { it.id }
           }
@@ -1013,7 +1043,8 @@ class VpnViewModel : ViewModel() {
   }
 
   fun deleteServer(serverId: String) {
-    viewModelScope.launch {
+    viewModelScope.launch(Dispatchers.IO) {
+      deletedServerIds.add(serverId)
       try {
         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
         db.collection("servers").document(serverId).delete()
@@ -1026,45 +1057,170 @@ class VpnViewModel : ViewModel() {
       if (_selectedServer.value.id == serverId) {
         _servers.value.firstOrNull()?.let { fallback ->
           _selectedServer.value = fallback
+          VpnStateManager.setActiveServer(fallback)
         }
       }
-      _statusMessage.value = "Server config deleted successfully"
+      withContext(Dispatchers.Main) {
+        _statusMessage.value = "Server config deleted successfully"
+      }
     }
   }
 
   fun clearAllImportedServers() {
-    deleteAllServers(onlyImported = true)
+    viewModelScope.launch(Dispatchers.IO) {
+      userClearedAllImported = true
+      val importedServers = _servers.value.filter {
+        it.isImported || it.id.startsWith("import-") || it.id.startsWith("manual-") || it.id == "vless-id-pusat-91" || it.id.contains("import")
+      }
+      val count = importedServers.size
+
+      importedServers.forEach { deletedServerIds.add(it.id) }
+
+      try {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        for (server in importedServers) {
+          db.collection("servers").document(server.id).delete()
+          db.collection("vpnConfigs").document(server.id).delete()
+        }
+      } catch (e: Throwable) {
+        // ignore offline
+      }
+
+      _servers.update { list ->
+        list.filter { server ->
+          !server.isImported && !server.id.startsWith("import-") && !server.id.startsWith("manual-") && server.id != "vless-id-pusat-91" && !server.id.contains("import") && !deletedServerIds.contains(server.id)
+        }
+      }
+
+      val remaining = _servers.value
+      if (remaining.none { it.id == _selectedServer.value.id }) {
+        val fallback = remaining.firstOrNull() ?: Server(
+          id = "none",
+          country = "No Server Selected",
+          city = "None",
+          countryCode = "XX",
+          pingMs = 0,
+          loadPercent = 0,
+          ipAddress = "—",
+          category = ServerCategory.ALL,
+          region = "None",
+          protocolSupport = "None",
+          configUri = "",
+          port = 0,
+          uuid = ""
+        )
+        _selectedServer.value = fallback
+        VpnStateManager.setActiveServer(if (remaining.isNotEmpty()) fallback else null)
+      }
+
+      withContext(Dispatchers.Main) {
+        _statusMessage.value = if (count > 0) "Deleted $count imported configuration(s)" else "No imported configurations found"
+      }
+    }
   }
 
   fun deleteAllServers(onlyImported: Boolean = false) {
-    viewModelScope.launch {
-      val idsToDelete = if (onlyImported) {
-        _servers.value.filter { it.isImported }.map { it.id }
-      } else {
-        _servers.value.map { it.id }
+    if (onlyImported) {
+      clearAllImportedServers()
+      return
+    }
+
+    viewModelScope.launch(Dispatchers.IO) {
+      userClearedAllServers = true
+      userClearedAllImported = true
+
+      // If VPN is currently connected or active, gracefully disconnect
+      if (vpnStatus.value != VpnStatus.DISCONNECTED) {
+        withContext(Dispatchers.Main) {
+          disconnect()
+        }
+      }
+
+      val allServers = _servers.value
+      val count = allServers.size
+
+      allServers.forEach { deletedServerIds.add(it.id) }
+
+      try {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        for (server in allServers) {
+          db.collection("servers").document(server.id).delete()
+          db.collection("vpnConfigs").document(server.id).delete()
+        }
+      } catch (e: Throwable) {
+        // ignore offline
+      }
+
+      _servers.value = emptyList()
+
+      val emptyServer = Server(
+        id = "none",
+        country = "No Server Selected",
+        city = "None",
+        countryCode = "XX",
+        pingMs = 0,
+        loadPercent = 0,
+        ipAddress = "—",
+        category = ServerCategory.ALL,
+        region = "None",
+        protocolSupport = "None",
+        configUri = "",
+        port = 0,
+        uuid = ""
+      )
+      _selectedServer.value = emptyServer
+      VpnStateManager.setActiveServer(null)
+
+      withContext(Dispatchers.Main) {
+        _statusMessage.value = "All $count server configurations deleted"
+      }
+    }
+  }
+
+  fun restoreDefaultServers() {
+    userClearedAllServers = false
+    userClearedAllImported = false
+    deletedServerIds.clear()
+    _servers.value = defaultServersList
+    _selectedServer.value = defaultServersList.first()
+    VpnStateManager.setActiveServer(defaultServersList.first())
+    _statusMessage.value = "Default server nodes restored"
+  }
+
+  fun updateServer(updated: Server) {
+    viewModelScope.launch(Dispatchers.IO) {
+      _servers.update { list ->
+        list.map { if (it.id == updated.id) updated else it }
+      }
+      if (_selectedServer.value.id == updated.id) {
+        _selectedServer.value = updated
+        VpnStateManager.setActiveServer(updated)
       }
 
       try {
         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-        for (id in idsToDelete) {
-          db.collection("servers").document(id).delete()
-          db.collection("vpnConfigs").document(id).delete()
-        }
+        val serverData = hashMapOf(
+          "name" to updated.city,
+          "country" to updated.country,
+          "countryCode" to updated.countryCode,
+          "city" to updated.city,
+          "host" to updated.ipAddress,
+          "ip" to updated.ipAddress,
+          "port" to updated.port.toLong(),
+          "protocol" to updated.protocolSupport,
+          "configUri" to updated.configUri,
+          "uuid" to updated.uuid,
+          "category" to updated.category.name,
+          "isImported" to updated.isImported,
+          "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        db.collection("servers").document(updated.id).set(serverData, com.google.firebase.firestore.SetOptions.merge())
       } catch (e: Throwable) {
-        // ignore network error
+        // ignore offline
       }
 
-      if (onlyImported) {
-        _servers.update { list -> list.filter { !it.isImported } }
-        if (_selectedServer.value.isImported) {
-          _servers.value.firstOrNull()?.let { fallback ->
-            _selectedServer.value = fallback
-          }
-        }
-        _statusMessage.value = "All imported configurations deleted"
-      } else {
-        _servers.value = emptyList()
-        _statusMessage.value = "All configurations deleted"
+      withContext(Dispatchers.Main) {
+        _statusMessage.value = "Configuration updated: ${updated.city}"
       }
     }
   }
@@ -1125,6 +1281,7 @@ class VpnViewModel : ViewModel() {
 
   fun addManualServer(server: Server, andConnect: Boolean = false, context: Context? = null) {
     viewModelScope.launch {
+      userClearedAllServers = false
       _servers.update { list ->
         listOf(server) + list.filter { it.id != server.id }
       }

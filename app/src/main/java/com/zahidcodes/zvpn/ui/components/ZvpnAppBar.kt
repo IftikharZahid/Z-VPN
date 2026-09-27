@@ -5,50 +5,56 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CloudSync
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.NetworkPing
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zahidcodes.zvpn.ui.theme.CyanAccent
-import com.zahidcodes.zvpn.ui.theme.OkEmerald
-import com.zahidcodes.zvpn.ui.theme.TextPrimary
-
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.rounded.Dns
-import androidx.compose.material.icons.rounded.Link
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.MenuDefaults
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
 import com.zahidcodes.zvpn.ui.theme.DarkSurfaceElevated
 import com.zahidcodes.zvpn.ui.theme.DarkSurfaceStroke
+import com.zahidcodes.zvpn.ui.theme.OkEmerald
 import com.zahidcodes.zvpn.ui.theme.TextMuted
+import com.zahidcodes.zvpn.ui.theme.TextPrimary
 
 @Composable
 fun ZvpnAppBar(
   onImportClick: () -> Unit,
   onAddManualServerClick: () -> Unit = onImportClick,
+  onFilterSortClick: (() -> Unit)? = null,
+  onDeleteAllClick: (() -> Unit)? = null,
+  onSyncFirestoreClick: (() -> Unit)? = null,
+  hasServers: Boolean = true,
   onTestPingClick: () -> Unit,
   modifier: Modifier = Modifier
 ) {
@@ -78,7 +84,7 @@ fun ZvpnAppBar(
       )
     }
 
-    // Actions - Ping Test and Plus Import/Manual buttons
+    // Actions - Ping Test and Single Unified Top-Right Plus Button
     Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -115,7 +121,7 @@ fun ZvpnAppBar(
         }
       }
 
-      // Plus Add/Import Button with Dropdown Menu
+      // Single Unified Top-Right Plus Button containing ALL actions
       Box(
         modifier = Modifier
           .size(38.dp)
@@ -128,7 +134,7 @@ fun ZvpnAppBar(
       ) {
         Icon(
           imageVector = Icons.Rounded.Add,
-          contentDescription = "Add or Import Server",
+          contentDescription = "Add or Import Server Actions",
           tint = CyanAccent,
           modifier = Modifier.size(20.dp)
         )
@@ -141,6 +147,7 @@ fun ZvpnAppBar(
             .border(1.dp, DarkSurfaceStroke, RoundedCornerShape(8.dp))
             .testTag("app_bar_plus_dropdown_menu")
         ) {
+          // Option 1: Import Config Link / URI
           DropdownMenuItem(
             text = {
               Column {
@@ -158,6 +165,7 @@ fun ZvpnAppBar(
             colors = MenuDefaults.itemColors()
           )
 
+          // Option 2: Add Server Manually
           DropdownMenuItem(
             text = {
               Column {
@@ -174,9 +182,68 @@ fun ZvpnAppBar(
             },
             colors = MenuDefaults.itemColors()
           )
+
+          // Option 3: Filter & Sort Servers
+          if (onFilterSortClick != null) {
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Filter & Sort Servers", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("Sort by ping, load, country or name", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.Tune, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                onFilterSortClick()
+              },
+              colors = MenuDefaults.itemColors()
+            )
+          }
+
+          // Option 4: Delete / Clear Configurations
+          if (onDeleteAllClick != null && hasServers) {
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Delete / Clear Configurations", color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("Remove imported or all server nodes", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.DeleteSweep, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                onDeleteAllClick()
+              },
+              colors = MenuDefaults.itemColors()
+            )
+          }
+
+          // Option 5: Sync Firestore Database
+          if (onSyncFirestoreClick != null) {
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Sync Firestore Database", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("View & upload cloud server schema", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                onSyncFirestoreClick()
+              },
+              colors = MenuDefaults.itemColors()
+            )
+          }
         }
       }
     }
   }
 }
-

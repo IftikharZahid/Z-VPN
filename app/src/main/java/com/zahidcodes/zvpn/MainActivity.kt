@@ -59,7 +59,10 @@ import com.zahidcodes.zvpn.ui.components.ZvpnAppBar
 import com.zahidcodes.zvpn.ui.components.ZvpnBottomBar
 import com.zahidcodes.zvpn.ui.components.ZvpnNavigationRail
 import com.zahidcodes.zvpn.ui.dialogs.ImportConfigDialog
+import com.zahidcodes.zvpn.ui.screens.DeleteConfigurationsDialog
+import com.zahidcodes.zvpn.ui.screens.FirestoreSchemaDialog
 import com.zahidcodes.zvpn.ui.screens.HomeScreen
+import com.zahidcodes.zvpn.ui.screens.ServerSortDialog
 import com.zahidcodes.zvpn.ui.screens.ServersScreen
 import com.zahidcodes.zvpn.ui.screens.SettingsScreen
 import com.zahidcodes.zvpn.ui.screens.StatsScreen
@@ -131,6 +134,9 @@ fun ZvpnApp(
   var currentScreen by remember { mutableStateOf(VpnScreen.HOME) }
   var showImportDialog by remember { mutableStateOf(false) }
   var importDialogInitialTab by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+  var showSortDialog by remember { mutableStateOf(false) }
+  var showDeleteAllDialog by remember { mutableStateOf(false) }
+  var showFirestoreFormatDialog by remember { mutableStateOf(false) }
 
   val vpnStatus by viewModel.vpnStatus.collectAsState()
   val selectedServer by viewModel.selectedServer.collectAsState()
@@ -257,6 +263,22 @@ fun ZvpnApp(
                 importDialogInitialTab = 1
                 showImportDialog = true
               },
+              onFilterSortClick = {
+                if (currentScreen != VpnScreen.SERVERS) {
+                  currentScreen = VpnScreen.SERVERS
+                }
+                showSortDialog = true
+              },
+              onDeleteAllClick = {
+                if (currentScreen != VpnScreen.SERVERS) {
+                  currentScreen = VpnScreen.SERVERS
+                }
+                showDeleteAllDialog = true
+              },
+              onSyncFirestoreClick = {
+                showFirestoreFormatDialog = true
+              },
+              hasServers = servers.isNotEmpty(),
               onTestPingClick = { viewModel.pingAllServers() }
             )
 
@@ -310,6 +332,7 @@ fun ZvpnApp(
                   onPingAll = { viewModel.pingAllServers() },
                   onDeleteServer = { viewModel.deleteServer(it) },
                   onClearAllImported = { viewModel.clearAllImportedServers() },
+                  onDeleteAll = { viewModel.deleteAllServers(false) },
                   onImportClick = {
                     importDialogInitialTab = 0
                     showImportDialog = true
@@ -320,6 +343,8 @@ fun ZvpnApp(
                   },
                   onUploadFirestore = { viewModel.uploadCurrentServersToFirestore() },
                   schemaJson = viewModel.getServerSchemaSampleJson(),
+                  onUpdateServer = { viewModel.updateServer(it) },
+                  onRestoreDefaults = { viewModel.restoreDefaultServers() },
                   onBackClick = { currentScreen = VpnScreen.HOME }
                 )
               }
@@ -403,6 +428,31 @@ fun ZvpnApp(
           requestConnection()
         }
       }
+    )
+  }
+
+  if (showSortDialog) {
+    ServerSortDialog(
+      selectedSortOption = selectedSortOption,
+      onSortSelect = { viewModel.setSortOption(it) },
+      onDismiss = { showSortDialog = false }
+    )
+  }
+
+  if (showDeleteAllDialog) {
+    DeleteConfigurationsDialog(
+      servers = servers,
+      onClearAllImported = { viewModel.clearAllImportedServers() },
+      onDeleteAll = { viewModel.deleteAllServers(false) },
+      onDismiss = { showDeleteAllDialog = false }
+    )
+  }
+
+  if (showFirestoreFormatDialog) {
+    FirestoreSchemaDialog(
+      schemaJson = viewModel.getServerSchemaSampleJson(),
+      onUploadFirestore = { viewModel.uploadCurrentServersToFirestore() },
+      onDismiss = { showFirestoreFormatDialog = false }
     )
   }
 }

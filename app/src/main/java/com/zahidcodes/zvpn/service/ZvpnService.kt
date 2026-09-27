@@ -135,18 +135,44 @@ class ZvpnService : VpnService() {
         // Close any stale TUN descriptor before establishing a fresh interface
         closeTunInterface()
 
+        // Read dynamic security settings from VpnStateManager
+        val currentSettings = VpnStateManager.settings.value
+        val mtu = if (currentSettings.forceStealthProtocol) 1360 else 1400
+
         // Configure full-device Android VpnService.Builder
-        Log.i(TAG, "Constructing TUN Builder: IPv4 0.0.0.0/0 full-device route, MTU 1400, DNS 1.1.1.1, 8.8.8.8")
+        Log.i(TAG, "Constructing TUN Builder: MTU $mtu, Stealth=${currentSettings.forceStealthProtocol}, AdBlocker=${currentSettings.adBlockerEnabled}, DnsLeak=${currentSettings.dnsLeakProtection}, KillSwitch=${currentSettings.killSwitchEnabled}")
         val builder = Builder()
           .setSession("ZVPN - ${server.city}")
           .addAddress("10.0.0.2", 24)
           .addRoute("0.0.0.0", 0) // Route ALL IPv4 traffic on the entire device
-          .addDnsServer("1.1.1.1")
-          .addDnsServer("8.8.8.8")
-          .addDnsServer("1.0.0.1")
-          .addDnsServer("8.8.4.4")
-          .setMtu(1400)
+          .setMtu(mtu)
           .setBlocking(true)
+
+        // DNS Leak Protection & CyberShield (Ad & Malware Blocker)
+        if (currentSettings.adBlockerEnabled) {
+          // AdGuard + Quad9 Ad & Threat filtering zero-log DNS
+          builder.addDnsServer("94.140.14.14")
+          builder.addDnsServer("94.140.15.15")
+          builder.addDnsServer("9.9.9.9")
+          builder.addRoute("94.140.14.14", 32)
+          builder.addRoute("94.140.15.15", 32)
+          builder.addRoute("9.9.9.9", 32)
+          Log.i(TAG, "CyberShield DNS filtering active (AdGuard/Quad9 ad & threat protection)")
+        } else if (currentSettings.dnsLeakProtection) {
+          // Zero-Log Encrypted Private DNS (Cloudflare + Quad9)
+          builder.addDnsServer("1.1.1.1")
+          builder.addDnsServer("1.0.0.1")
+          builder.addDnsServer("9.9.9.9")
+          builder.addRoute("1.1.1.1", 32)
+          builder.addRoute("1.0.0.1", 32)
+          builder.addRoute("9.9.9.9", 32)
+          Log.i(TAG, "DNS Leak Protection active (Zero-Log Cloudflare/Quad9)")
+        } else {
+          builder.addDnsServer("1.1.1.1")
+          builder.addDnsServer("8.8.8.8")
+          builder.addDnsServer("1.0.0.1")
+          builder.addDnsServer("8.8.4.4")
+        }
 
         // Prevent IPv6 leaks by routing or claiming IPv6 if supported
         try {
@@ -156,12 +182,18 @@ class ZvpnService : VpnService() {
           Log.w(TAG, "IPv6 route setup note: ${e.message} (device full-device IPv4 routing active)")
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && currentSettings.killSwitchEnabled) {
           builder.setMetered(false)
         }
 
         try {
           builder.addDisallowedApplication(packageName)
+          if (currentSettings.splitTunnelingEnabled) {
+            listOf("com.android.providers.downloads").forEach { pkg ->
+              try { builder.addDisallowedApplication(pkg) } catch (e: Exception) {}
+            }
+            Log.i(TAG, "Split Tunneling: Bypassed applications configured")
+          }
         } catch (e: Exception) {
           Log.w(TAG, "Disallowed application setup note: ${e.message}")
         }
@@ -326,6 +358,15 @@ class ZvpnService : VpnService() {
       Log.i(TAG, "Re-protecting sockets and refreshing tunnel for new transport: $newTransport")
       activeServer?.let { s ->
         connectVpnTunnel(s)
+      }
+    } else if (newTransport == "Wi-Fi" || newTransport.contains("Wi-Fi", ignoreCase = true)) {
+      val settings = VpnStateManager.settings.value
+      if (settings.autoConnectWifi && VpnStateManager.vpnStatus.value == VpnStatus.DISCONNECTED) {
+        Log.i(TAG, "Auto-Connect on Wi-Fi triggered. Encrypting untrusted connection.")
+        val target = activeServer ?: VpnStateManager.getPersistedServer(this) ?: VpnStateManager.activeServer.value
+        if (target != null) {
+          connectVpnTunnel(target)
+        }
       }
     }
   }

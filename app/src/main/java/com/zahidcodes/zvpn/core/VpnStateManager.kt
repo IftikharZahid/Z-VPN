@@ -62,8 +62,30 @@ object VpnStateManager {
   private val _reconnectCount = MutableStateFlow(0)
   val reconnectCount: StateFlow<Int> = _reconnectCount.asStateFlow()
 
+  private val _settings = MutableStateFlow(com.zahidcodes.zvpn.model.VpnSettings())
+  val settings: StateFlow<com.zahidcodes.zvpn.model.VpnSettings> = _settings.asStateFlow()
+
   @Volatile
   var isServiceRunning: Boolean = false
+
+  fun setActiveServer(server: Server?) {
+    _activeServer.value = server
+  }
+
+  fun updateSettings(newSettings: com.zahidcodes.zvpn.model.VpnSettings, context: Context? = null) {
+    _settings.value = newSettings
+    if (context != null) {
+      getPrefs(context).edit()
+        .putBoolean("setting_kill_switch", newSettings.killSwitchEnabled)
+        .putBoolean("setting_split_tunnel", newSettings.splitTunnelingEnabled)
+        .putBoolean("setting_auto_wifi", newSettings.autoConnectWifi)
+        .putString("setting_protocol", newSettings.protocol)
+        .putBoolean("setting_force_stealth", newSettings.forceStealthProtocol)
+        .putBoolean("setting_ad_blocker", newSettings.adBlockerEnabled)
+        .putBoolean("setting_dns_leak", newSettings.dnsLeakProtection)
+        .apply()
+    }
+  }
 
   fun init(context: Context) {
     val prefs = getPrefs(context)
@@ -75,6 +97,17 @@ object VpnStateManager {
 
     _totalDownloadedMb.value = totalDl / (1024.0 * 1024.0)
     _totalUploadedMb.value = totalUp / (1024.0 * 1024.0)
+
+    val savedSettings = com.zahidcodes.zvpn.model.VpnSettings(
+      killSwitchEnabled = prefs.getBoolean("setting_kill_switch", true),
+      splitTunnelingEnabled = prefs.getBoolean("setting_split_tunnel", false),
+      autoConnectWifi = prefs.getBoolean("setting_auto_wifi", true),
+      protocol = prefs.getString("setting_protocol", "VLESS (REALITY)") ?: "VLESS (REALITY)",
+      forceStealthProtocol = prefs.getBoolean("setting_force_stealth", true),
+      adBlockerEnabled = prefs.getBoolean("setting_ad_blocker", true),
+      dnsLeakProtection = prefs.getBoolean("setting_dns_leak", true)
+    )
+    _settings.value = savedSettings
 
     if (serverId != null) {
       val server = Server(

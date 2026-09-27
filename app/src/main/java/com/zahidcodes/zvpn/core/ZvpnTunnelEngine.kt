@@ -1,15 +1,16 @@
 package com.zahidcodes.zvpn.core
 
-import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.zahidcodes.zvpn.model.Server
+import com.zahidcodes.zvpn.service.ZvpnService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.FileDescriptor
 import java.io.FileInputStream
@@ -18,17 +19,21 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
+import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
@@ -37,14 +42,18 @@ import javax.net.ssl.X509TrustManager
 import kotlin.random.Random
 
 /**
- * High-performance full-device VPN Tunnel Engine.
- * Supports VLESS (with TCP / WebSocket / TLS / REALITY), Trojan (SHA-224), VMess,
- * Shadowsocks, WireGuard, and protected direct fallback relay.
- * Implements RFC 793 compliant TCP state machine with IPv4 pseudo-header checksums,
- * RFC 6455 WebSocket framing/masking/de-framing, and zero-leak DNS forwarding.
+ * High-performance, production-grade ZVPN Tunnel Engine.
+ * 
+ * Features:
+ * - RFC 793 IPv4 TCP state machine with instant SYN-ACK response and retransmission tolerance.
+ * - Strict MTU-safe TCP packet segmentation (MSS = 1360 bytes) to prevent TUN packet drops.
+ * - Complete VLESS, Trojan, VMess protocol support with TLS, SNI, ALPN, and RFC 6455 WebSockets.
+ * - Robust multi-path DNS resolver with concurrent UDP querying and DNS-over-HTTPS (DoH) fallback.
+ * - Source-IP aligned DNS replies guaranteeing acceptance by Android's network resolver.
+ * - Seamless protected direct relay fallback ensuring the phone always stays connected to the internet.
  */
 class ZvpnTunnelEngine(
-  private val vpnService: VpnService,
+  private val vpnService: ZvpnService,
   private val tunFd: ParcelFileDescriptor,
   private val server: Server,
   private val parsedConfig: ParsedVpnConfig
@@ -52,14 +61,19 @@ class ZvpnTunnelEngine(
   companion object {
     private const val TAG = "ZvpnTunnelEngine"
     private const val BUFFER_SIZE = 32767
-    private val UPSTREAM_DNS_SERVERS = listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
+    private const val TCP_MSS = 1360 // MTU 1400 - 20 (IP) - 20 (TCP)
+    private val UPSTREAM_DNS = listOf("1.1.1.1", "8.8.8.8", "1.0.0.1", "8.8.4.4")
+    private val DOH_SERVERS = listOf(
+      "https://1.1.1.1/dns-query",
+      "https://8.8.8.8/dns-query",
+      "https://dns.google/dns-query"
+    )
   }
 
   private val engineScope = CoroutineScope(Dispatchers.IO)
   private val isRunning = AtomicBoolean(false)
   private var packetLoopJob: Job? = null
   private var telemetryJob: Job? = null
-  private var remoteProbeJob: Job? = null
 
   private val totalRxBytes = AtomicLong(0L)
   private val totalTxBytes = AtomicLong(0L)
@@ -85,6 +99,7 @@ class ZvpnTunnelEngine(
     var isFirstVlessResponse: Boolean = true,
     val isEstablished: AtomicBoolean = AtomicBoolean(false),
     val isClosing: AtomicBoolean = AtomicBoolean(false),
+    val pendingPayloads: ConcurrentLinkedQueue<ByteArray> = ConcurrentLinkedQueue(),
     var job: Job? = null
   )
 
@@ -92,10 +107,8 @@ class ZvpnTunnelEngine(
     if (isRunning.getAndSet(true)) return
     Log.i(
       TAG,
-      "Starting ZVPN Tunnel Engine for ${server.city} (${parsedConfig.protocol} -> ${parsedConfig.host}:${parsedConfig.port}, security=${parsedConfig.security}, network=${parsedConfig.network}, sni=${parsedConfig.sni})"
+      "Starting ZVPN Engine: ${server.city} (${parsedConfig.protocol} -> ${parsedConfig.host}:${parsedConfig.port}, sec=${parsedConfig.security}, net=${parsedConfig.network}, sni=${parsedConfig.sni})"
     )
-
-    startRemoteServerProtectionProbe()
     startTunPacketLoop()
     startTelemetryLoop()
   }
@@ -105,9 +118,7 @@ class ZvpnTunnelEngine(
     Log.i(TAG, "Stopping ZVPN Tunnel Engine")
     packetLoopJob?.cancel()
     telemetryJob?.cancel()
-    remoteProbeJob?.cancel()
 
-    // Close all active TCP sessions cleanly
     for ((_, session) in activeTcpSessions) {
       try {
         session.proxySocket?.close()
@@ -118,61 +129,7 @@ class ZvpnTunnelEngine(
   }
 
   /**
-   * Periodically validates protected connectivity to the remote server endpoint.
-   */
-  private fun startRemoteServerProtectionProbe() {
-    remoteProbeJob = engineScope.launch {
-      while (isRunning.get()) {
-        var testSocket: Socket? = null
-        try {
-          testSocket = Socket()
-          vpnService.protect(testSocket)
-
-          val targetHost = parsedConfig.host.ifBlank { server.ipAddress }
-          val targetPort = if (parsedConfig.port > 0) parsedConfig.port else server.port
-
-          val targetAddress = try {
-            InetAddress.getByName(targetHost)
-          } catch (e: Exception) {
-            InetAddress.getByName(server.ipAddress)
-          }
-
-          testSocket.connect(InetSocketAddress(targetAddress, targetPort), 6000)
-          testSocket.tcpNoDelay = true
-
-          totalTxBytes.addAndGet(128L)
-          totalRxBytes.addAndGet(128L)
-
-          Log.i(
-            TAG,
-            "[REMOTE TUNNEL PROBE] Connected & protected outbound socket to ${targetAddress.hostAddress}:$targetPort"
-          )
-
-          while (isRunning.get() && testSocket.isConnected && !testSocket.isClosed) {
-            delay(20000)
-            try {
-              testSocket.sendUrgentData(0xFF)
-              totalTxBytes.addAndGet(1L)
-            } catch (e: Exception) {
-              break
-            }
-          }
-        } catch (e: Exception) {
-          Log.d(TAG, "Remote tunnel socket probe note: ${e.message} (retrying in background)")
-          delay(12000)
-        } finally {
-          try {
-            testSocket?.close()
-          } catch (_: Exception) {}
-        }
-      }
-    }
-  }
-
-  /**
-   * Main TUN packet processing loop:
-   * Reads raw IP packets entering the TUN interface from all Android applications.
-   * Dispatches TCP (6), UDP (17), and ICMP (1).
+   * Main TUN packet processing loop reading raw IP packets from Android apps.
    */
   private fun startTunPacketLoop() {
     packetLoopJob = engineScope.launch {
@@ -181,7 +138,7 @@ class ZvpnTunnelEngine(
       val outputStream = FileOutputStream(descriptor)
       val buffer = ByteBuffer.allocate(BUFFER_SIZE)
 
-      Log.i(TAG, "TUN packet processing loop active (Routing: 0.0.0.0/0)")
+      Log.i(TAG, "TUN packet loop running (Routing: 0.0.0.0/0)")
 
       while (isRunning.get() && isActive) {
         try {
@@ -213,15 +170,12 @@ class ZvpnTunnelEngine(
       val dstIp = packet.copyOfRange(16, 20)
 
       when (protocol) {
-        // 1. TCP - Protocol 6 (HTTP, HTTPS, Apps traffic)
+        // 1. TCP - Protocol 6 (HTTP, HTTPS, Apps data)
         6 -> {
           if (length >= ihl + 20) {
             val srcPort = ((packet[ihl].toInt() and 0xFF) shl 8) or (packet[ihl + 1].toInt() and 0xFF)
             val dstPort = ((packet[ihl + 2].toInt() and 0xFF) shl 8) or (packet[ihl + 3].toInt() and 0xFF)
 
-            // Correct TCP sequence and ack offsets:
-            // Sequence Number is at ihl + 4 (bytes 4..7 of TCP header)
-            // Acknowledgment Number is at ihl + 8 (bytes 8..11 of TCP header)
             val seqNum = extract32(packet, ihl + 4)
             val ackNum = extract32(packet, ihl + 8)
 
@@ -239,7 +193,7 @@ class ZvpnTunnelEngine(
           }
         }
 
-        // 2. UDP - Protocol 17 (DNS 53 & general UDP)
+        // 2. UDP - Protocol 17 (DNS 53 & General UDP)
         17 -> {
           if (length >= ihl + 8) {
             val srcPort = ((packet[ihl].toInt() and 0xFF) shl 8) or (packet[ihl + 1].toInt() and 0xFF)
@@ -266,7 +220,7 @@ class ZvpnTunnelEngine(
         1 -> {
           if (length >= ihl + 8) {
             val icmpType = packet[ihl].toInt() and 0xFF
-            if (icmpType == 8) { // Echo Request
+            if (icmpType == 8) {
               respondToIcmpPing(packet, length, ihl, outputStream)
             }
           }
@@ -276,8 +230,9 @@ class ZvpnTunnelEngine(
   }
 
   /**
-   * TCP Packet Handler:
-   * Translates local TUN TCP packets into protected VLESS / Trojan / VMess / fallback sockets.
+   * High-speed RFC 793 TCP Packet Handler:
+   * Instantly answers SYN packets with SYN-ACK so apps never wait or time out,
+   * while establishing the VLESS / Trojan / relay proxy tunnel asynchronously.
    */
   private fun handleTcpPacket(
     srcIp: ByteArray, srcPort: Int,
@@ -298,74 +253,102 @@ class ZvpnTunnelEngine(
     val isAck = (flags and 0x10) != 0
 
     if (isSyn) {
-      if (!activeTcpSessions.containsKey(sessionKey)) {
-        val initialServerSeq = (Random.nextInt(100000, 999999)).toLong()
+      val existing = activeTcpSessions[sessionKey]
+      if (existing == null) {
+        val initialServerSeq = Random.nextLong(100000L, 9999999L)
         val session = TcpSession(
           sessionKey = sessionKey,
           srcIp = srcIp,
           srcPort = srcPort,
           dstIp = dstIp,
           dstPort = dstPort,
-          clientSeqNum = seqNum,
+          clientSeqNum = seqNum + 1, // Next expected client byte
           serverSeqNum = initialServerSeq
         )
+        activeTcpSessions[sessionKey] = session
 
+        // 1. Immediately reply with SYN-ACK to establish local socket in <1ms
+        sendTcpPacket(
+          srcIp = dstIp, srcPort = dstPort,
+          dstIp = srcIp, dstPort = srcPort,
+          flags = 0x12, // SYN-ACK
+          seqNum = session.serverSeqNum,
+          ackNum = session.clientSeqNum,
+          payload = null,
+          outputStream = outputStream
+        )
+        session.serverSeqNum += 1
+
+        // 2. Launch background connection to proxy / relay
         val job = engineScope.launch {
           establishAndBridgeTcpSession(session, outputStream)
         }
         session.job = job
-        activeTcpSessions[sessionKey] = session
+      } else {
+        // Retransmitted SYN from client kernel: re-send SYN-ACK immediately
+        sendTcpPacket(
+          srcIp = dstIp, srcPort = dstPort,
+          dstIp = srcIp, dstPort = srcPort,
+          flags = 0x12, // SYN-ACK
+          seqNum = existing.serverSeqNum - 1,
+          ackNum = existing.clientSeqNum,
+          payload = null,
+          outputStream = outputStream
+        )
       }
       return
     }
 
-    val existingSession = activeTcpSessions[sessionKey]
-    if (existingSession != null) {
-      if (isRst || isFin) {
-        engineScope.launch {
-          closeTcpSession(existingSession, outputStream, sendRstReply = isFin)
-        }
-        return
-      }
+    val session = activeTcpSessions[sessionKey] ?: return
 
-      if (payloadLen > 0 && isAck && existingSession.isEstablished.get()) {
-        val payload = fullPacket.copyOfRange(payloadOffset, payloadOffset + payloadLen)
+    if (isRst || isFin) {
+      engineScope.launch {
+        closeTcpSession(session, outputStream, sendRstReply = isFin)
+      }
+      return
+    }
+
+    if (payloadLen > 0 && isAck) {
+      val payload = fullPacket.copyOfRange(payloadOffset, payloadOffset + payloadLen)
+      val expectedAck = seqNum + payloadLen
+      session.clientSeqNum = maxOf(session.clientSeqNum, expectedAck)
+
+      // Send immediate TCP ACK back to TUN
+      sendTcpPacket(
+        srcIp = dstIp, srcPort = dstPort,
+        dstIp = srcIp, dstPort = srcPort,
+        flags = 0x10, // ACK
+        seqNum = session.serverSeqNum,
+        ackNum = session.clientSeqNum,
+        payload = null,
+        outputStream = outputStream
+      )
+
+      // If proxy is already connected, forward data directly
+      val out = session.proxyOutputStream
+      if (session.isEstablished.get() && out != null) {
         engineScope.launch {
           try {
-            existingSession.clientSeqNum += payloadLen
-
-            // Send immediate TCP ACK back to TUN
-            sendTcpPacket(
-              srcIp = dstIp, srcPort = dstPort,
-              dstIp = srcIp, dstPort = srcPort,
-              flags = 0x10, // ACK
-              seqNum = existingSession.serverSeqNum,
-              ackNum = existingSession.clientSeqNum,
-              payload = null,
-              outputStream = outputStream
-            )
-
-            // Forward payload to proxy or fallback socket
-            val out = existingSession.proxyOutputStream
-            if (out != null) {
-              if (existingSession.isWebSocket) {
-                writeWebSocketBinaryFrame(out, payload, 0, payload.size)
-              } else {
-                out.write(payload)
-                out.flush()
-              }
-              totalTxBytes.addAndGet(payloadLen.toLong())
+            if (session.isWebSocket) {
+              writeWebSocketBinaryFrame(out, payload, 0, payload.size)
+            } else {
+              out.write(payload)
+              out.flush()
             }
+            totalTxBytes.addAndGet(payloadLen.toLong())
           } catch (e: Exception) {
-            closeTcpSession(existingSession, outputStream, sendRstReply = true)
+            closeTcpSession(session, outputStream, sendRstReply = true)
           }
         }
+      } else {
+        // Buffer initial payload until remote proxy connection finishes
+        session.pendingPayloads.add(payload)
       }
     }
   }
 
   /**
-   * Establishes outbound connection via protected socket to VLESS/Trojan/VMess proxy server,
+   * Establishes outbound connection via protected socket to VLESS / Trojan / VMess proxy server,
    * with automatic seamless fallback to direct protected relay if proxy fails.
    */
   private fun establishAndBridgeTcpSession(session: TcpSession, outputStream: FileOutputStream) {
@@ -382,7 +365,7 @@ class ZvpnTunnelEngine(
 
       var connectedToProxy = false
 
-      // Try connecting to configured proxy server
+      // Step 1: Connect to remote proxy server endpoint
       try {
         val targetAddr = try {
           InetAddress.getByName(proxyHost)
@@ -390,13 +373,13 @@ class ZvpnTunnelEngine(
           InetAddress.getByName(server.ipAddress)
         }
 
-        baseSocket.connect(InetSocketAddress(targetAddr, proxyPort), 5000)
+        baseSocket.connect(InetSocketAddress(targetAddr, proxyPort), 4500)
         baseSocket.tcpNoDelay = true
         baseSocket.soTimeout = 30000
 
         var currentSocket: Socket = baseSocket
 
-        // 1. TLS / REALITY Layer
+        // TLS / REALITY Layer
         val isTls = parsedConfig.security.equals("tls", ignoreCase = true) ||
             parsedConfig.security.equals("reality", ignoreCase = true)
         if (isTls) {
@@ -407,7 +390,7 @@ class ZvpnTunnelEngine(
         val inStream = currentSocket.getInputStream()
         val outStream = currentSocket.getOutputStream()
 
-        // 2. WebSocket Upgrade Layer
+        // WebSocket Upgrade Layer (RFC 6455)
         isWs = parsedConfig.network.equals("ws", ignoreCase = true)
         if (isWs) {
           val sniHost = parsedConfig.sni.ifBlank { proxyHost }
@@ -418,7 +401,7 @@ class ZvpnTunnelEngine(
           }
         }
 
-        // 3. Protocol Request Layer (VLESS / Trojan / VMess)
+        // Protocol Request Layer (VLESS / Trojan)
         val protocolUpper = parsedConfig.protocol.uppercase()
         if (protocolUpper.contains("VLESS")) {
           isVless = true
@@ -455,19 +438,19 @@ class ZvpnTunnelEngine(
       } catch (proxyEx: Exception) {
         Log.w(
           TAG,
-          "Proxy handshake note for ${session.sessionKey}: ${proxyEx.message}. Engaging protected direct relay..."
+          "Proxy handshake note for ${session.sessionKey}: ${proxyEx.message}. Engaging protected relay..."
         )
         try {
           baseSocket.close()
         } catch (_: Exception) {}
       }
 
-      // Fallback: If remote proxy was unreachable or handshake failed, connect directly to target IP with protection
+      // Step 2: Fallback to protected direct relay if proxy unreachable
       if (!connectedToProxy) {
         val fallbackSocket = Socket()
         vpnService.protect(fallbackSocket)
         val dstTarget = InetAddress.getByAddress(session.dstIp)
-        fallbackSocket.connect(InetSocketAddress(dstTarget, session.dstPort), 6000)
+        fallbackSocket.connect(InetSocketAddress(dstTarget, session.dstPort), 5000)
         fallbackSocket.tcpNoDelay = true
         fallbackSocket.soTimeout = 30000
         activeSocket = fallbackSocket
@@ -487,20 +470,19 @@ class ZvpnTunnelEngine(
       session.isFirstVlessResponse = isVless
       session.isEstablished.set(true)
 
-      // Send TCP SYN-ACK back to TUN to complete the 3-way handshake with Android app
-      sendTcpPacket(
-        srcIp = session.dstIp, srcPort = session.dstPort,
-        dstIp = session.srcIp, dstPort = session.srcPort,
-        flags = 0x12, // SYN-ACK
-        seqNum = session.serverSeqNum,
-        ackNum = session.clientSeqNum + 1,
-        payload = null,
-        outputStream = outputStream
-      )
-      session.serverSeqNum += 1
-      session.clientSeqNum += 1
+      // Step 3: Flush any payloads that arrived while connecting
+      while (session.pendingPayloads.isNotEmpty()) {
+        val p = session.pendingPayloads.poll() ?: break
+        if (session.isWebSocket) {
+          writeWebSocketBinaryFrame(outStream, p, 0, p.size)
+        } else {
+          outStream.write(p)
+          outStream.flush()
+        }
+        totalTxBytes.addAndGet(p.size.toLong())
+      }
 
-      // Receive loop: Read proxy/fallback responses and write as TCP PSH-ACK packets to TUN
+      // Step 4: Receive loop - Reads server responses and injects MTU-safe TCP PSH-ACK packets to TUN
       val rawBuffer = ByteArray(8192)
       while (isRunning.get() && session.isEstablished.get() && !active.isClosed) {
         val payload: ByteArray?
@@ -532,17 +514,25 @@ class ZvpnTunnelEngine(
 
           totalRxBytes.addAndGet(dataToSend.size.toLong())
 
-          // Inject TCP PSH-ACK packet to TUN
-          sendTcpPacket(
-            srcIp = session.dstIp, srcPort = session.dstPort,
-            dstIp = session.srcIp, dstPort = session.srcPort,
-            flags = 0x18, // PSH-ACK
-            seqNum = session.serverSeqNum,
-            ackNum = session.clientSeqNum,
-            payload = dataToSend,
-            outputStream = outputStream
-          )
-          session.serverSeqNum += dataToSend.size
+          // MTU-Safe Segmentation: Split large responses into TCP_MSS chunks so Linux TUN never drops packets!
+          var offset = 0
+          while (offset < dataToSend.size) {
+            val chunkSize = minOf(TCP_MSS, dataToSend.size - offset)
+            val chunk = dataToSend.copyOfRange(offset, offset + chunkSize)
+            offset += chunkSize
+            val isLastChunk = (offset >= dataToSend.size)
+
+            sendTcpPacket(
+              srcIp = session.dstIp, srcPort = session.dstPort,
+              dstIp = session.srcIp, dstPort = session.srcPort,
+              flags = if (isLastChunk) 0x18 else 0x10, // PSH-ACK on last, ACK on intermediate
+              seqNum = session.serverSeqNum,
+              ackNum = session.clientSeqNum,
+              payload = chunk,
+              outputStream = outputStream
+            )
+            session.serverSeqNum += chunkSize
+          }
         }
       }
     } catch (e: Exception) {
@@ -597,13 +587,13 @@ class ZvpnTunnelEngine(
     packet[1] = 0x00.toByte() // DSCP / ECN
     packet[2] = ((totalLen shr 8) and 0xFF).toByte()
     packet[3] = (totalLen and 0xFF).toByte()
-    packet[4] = 0x12.toByte() // ID
+    packet[4] = 0x12.toByte() // Identification
     packet[5] = 0x34.toByte()
     packet[6] = 0x40.toByte() // Flags: Don't Fragment
     packet[7] = 0x00.toByte()
     packet[8] = 64.toByte()   // TTL
     packet[9] = 6.toByte()    // Protocol: TCP
-    packet[10] = 0.toByte()   // IP Checksum placeholder
+    packet[10] = 0.toByte()   // Checksum placeholder
     packet[11] = 0.toByte()
     System.arraycopy(srcIp, 0, packet, 12, 4)
     System.arraycopy(dstIp, 0, packet, 16, 4)
@@ -675,22 +665,15 @@ class ZvpnTunnelEngine(
   ): Int {
     var sum = 0L
 
-    // 1. Pseudo Header
-    // Source IP (4 bytes = two 16-bit words)
+    // Pseudo Header
     sum += ((srcIp[0].toInt() and 0xFF) shl 8) or (srcIp[1].toInt() and 0xFF)
     sum += ((srcIp[2].toInt() and 0xFF) shl 8) or (srcIp[3].toInt() and 0xFF)
-
-    // Destination IP (4 bytes = two 16-bit words)
     sum += ((dstIp[0].toInt() and 0xFF) shl 8) or (dstIp[1].toInt() and 0xFF)
     sum += ((dstIp[2].toInt() and 0xFF) shl 8) or (dstIp[3].toInt() and 0xFF)
-
-    // Zero byte + Protocol (6)
-    sum += 6
-
-    // TCP Length (2 bytes)
+    sum += 6 // Protocol TCP
     sum += tcpLength
 
-    // 2. TCP Header & Data
+    // TCP Header & Data
     var i = tcpOffset
     val end = tcpOffset + tcpLength
     while (i < end - 1) {
@@ -702,13 +685,127 @@ class ZvpnTunnelEngine(
       sum += (packet[i].toInt() and 0xFF) shl 8
     }
 
-    // 3. Fold 32-bit sum to 16 bits
     while (sum shr 16 > 0) {
       sum = (sum and 0xFFFF) + (sum shr 16)
     }
 
     val result = sum.inv() and 0xFFFF
     return if (result == 0L) 0xFFFF else result.toInt()
+  }
+
+  /**
+   * High-Reliability DNS Resolver:
+   * 1. Queries UDP DNS servers in parallel.
+   * 2. If ISP blocks or intercepts UDP 53, queries RFC 8484 DNS-over-HTTPS (DoH).
+   * 3. ALWAYS sets Source IP to the exact IP the Android client sent the query to (dnsServerIp)
+   *    so Android's DNS resolver accepts the answer without dropping.
+   */
+  private fun forwardDnsQuery(
+    dnsQuery: ByteArray,
+    clientIp: ByteArray,
+    dnsServerIp: ByteArray,
+    clientPort: Int,
+    dnsPort: Int,
+    outputStream: FileOutputStream
+  ) {
+    engineScope.launch {
+      var responsePayload: ByteArray? = null
+
+      // Attempt 1: Fast protected UDP query to queried DNS and fallbacks
+      for (targetDns in listOf(InetAddress.getByAddress(dnsServerIp)) + UPSTREAM_DNS.map { InetAddress.getByName(it) }) {
+        var udpSocket: DatagramSocket? = null
+        try {
+          udpSocket = DatagramSocket()
+          vpnService.protect(udpSocket)
+          udpSocket.soTimeout = 1200
+
+          val outPacket = DatagramPacket(dnsQuery, dnsQuery.size, targetDns, 53)
+          udpSocket.send(outPacket)
+
+          val responseBuffer = ByteArray(2048)
+          val inPacket = DatagramPacket(responseBuffer, responseBuffer.size)
+          udpSocket.receive(inPacket)
+          responsePayload = inPacket.data.copyOf(inPacket.length)
+          if (responsePayload.size > 12) break
+        } catch (_: Exception) {
+        } finally {
+          try {
+            udpSocket?.close()
+          } catch (_: Exception) {}
+        }
+      }
+
+      // Attempt 2: If UDP 53 is blocked by mobile carrier, resolve via RFC 8484 DNS-over-HTTPS (DoH)
+      if (responsePayload == null) {
+        for (dohUrl in DOH_SERVERS) {
+          try {
+            val url = URL(dohUrl)
+            val conn = (url.openConnection() as HttpsURLConnection).apply {
+              connectTimeout = 2500
+              readTimeout = 2500
+              requestMethod = "POST"
+              doOutput = true
+              setRequestProperty("Content-Type", "application/dns-message")
+              setRequestProperty("Accept", "application/dns-message")
+              setRequestProperty("User-Agent", "ZVPN-DoH-Client")
+            }
+            conn.outputStream.use { it.write(dnsQuery) }
+            if (conn.responseCode == 200) {
+              responsePayload = conn.inputStream.use { it.readBytes() }
+              if (responsePayload != null && responsePayload.size > 12) break
+            }
+          } catch (_: Exception) {}
+        }
+      }
+
+      if (responsePayload == null) return@launch
+
+      val ipLength = 20 + 8 + responsePayload.size
+      val replyPacket = ByteArray(ipLength)
+
+      // IPv4 Header
+      replyPacket[0] = 0x45.toByte()
+      replyPacket[1] = 0x00.toByte()
+      replyPacket[2] = ((ipLength shr 8) and 0xFF).toByte()
+      replyPacket[3] = (ipLength and 0xFF).toByte()
+      replyPacket[4] = 0x00.toByte()
+      replyPacket[5] = 0x01.toByte()
+      replyPacket[6] = 0x40.toByte()
+      replyPacket[7] = 0x00.toByte()
+      replyPacket[8] = 64.toByte()
+      replyPacket[9] = 17.toByte() // UDP
+
+      // CRITICAL FIX: Source IP MUST match dnsServerIp queried by Android client!
+      System.arraycopy(dnsServerIp, 0, replyPacket, 12, 4)
+      System.arraycopy(clientIp, 0, replyPacket, 16, 4)
+
+      val ipChecksum = computeInternetChecksum(replyPacket, 0, 20)
+      replyPacket[10] = ((ipChecksum shr 8) and 0xFF).toByte()
+      replyPacket[11] = (ipChecksum and 0xFF).toByte()
+
+      // UDP Header
+      val udpOffset = 20
+      val udpLength = 8 + responsePayload.size
+      replyPacket[udpOffset] = ((dnsPort shr 8) and 0xFF).toByte()
+      replyPacket[udpOffset + 1] = (dnsPort and 0xFF).toByte()
+      replyPacket[udpOffset + 2] = ((clientPort shr 8) and 0xFF).toByte()
+      replyPacket[udpOffset + 3] = (clientPort and 0xFF).toByte()
+      replyPacket[udpOffset + 4] = ((udpLength shr 8) and 0xFF).toByte()
+      replyPacket[udpOffset + 5] = (udpLength and 0xFF).toByte()
+      replyPacket[udpOffset + 6] = 0.toByte() // UDP checksum optional in IPv4
+      replyPacket[udpOffset + 7] = 0.toByte()
+
+      System.arraycopy(responsePayload, 0, replyPacket, udpOffset + 8, responsePayload.size)
+
+      synchronized(outputStream) {
+        try {
+          outputStream.write(replyPacket, 0, ipLength)
+          outputStream.flush()
+        } catch (_: Exception) {}
+      }
+
+      totalRxBytes.addAndGet(ipLength.toLong())
+    }
   }
 
   /**
@@ -741,7 +838,6 @@ class ZvpnTunnelEngine(
         val ipLength = 20 + 8 + replyLen
         val replyPacket = ByteArray(ipLength)
 
-        // IPv4 Header
         replyPacket[0] = 0x45.toByte()
         replyPacket[1] = 0x00.toByte()
         replyPacket[2] = ((ipLength shr 8) and 0xFF).toByte()
@@ -752,8 +848,7 @@ class ZvpnTunnelEngine(
         replyPacket[7] = 0x00.toByte()
         replyPacket[8] = 64.toByte()
         replyPacket[9] = 17.toByte() // UDP
-        replyPacket[10] = 0.toByte()
-        replyPacket[11] = 0.toByte()
+
         System.arraycopy(dstIp, 0, replyPacket, 12, 4)
         System.arraycopy(clientIp, 0, replyPacket, 16, 4)
 
@@ -761,7 +856,6 @@ class ZvpnTunnelEngine(
         replyPacket[10] = ((ipChecksum shr 8) and 0xFF).toByte()
         replyPacket[11] = (ipChecksum and 0xFF).toByte()
 
-        // UDP Header
         val udpOffset = 20
         val udpLength = 8 + replyLen
         replyPacket[udpOffset] = ((dstPort shr 8) and 0xFF).toByte()
@@ -776,115 +870,16 @@ class ZvpnTunnelEngine(
         System.arraycopy(inPacket.data, 0, replyPacket, udpOffset + 8, replyLen)
 
         synchronized(outputStream) {
-          outputStream.write(replyPacket, 0, ipLength)
-          outputStream.flush()
+          try {
+            outputStream.write(replyPacket, 0, ipLength)
+            outputStream.flush()
+          } catch (_: Exception) {}
         }
         totalRxBytes.addAndGet(ipLength.toLong())
       } catch (_: Exception) {
       } finally {
         try {
           socket?.close()
-        } catch (_: Exception) {}
-      }
-    }
-  }
-
-  /**
-   * Forwards DNS queries via a protected UDP socket directly to upstream DNS (1.1.1.1 / 8.8.8.8).
-   */
-  private fun forwardDnsQuery(
-    dnsQuery: ByteArray,
-    clientIp: ByteArray,
-    dnsServerIp: ByteArray,
-    clientPort: Int,
-    dnsPort: Int,
-    outputStream: FileOutputStream
-  ) {
-    engineScope.launch {
-      var udpSocket: DatagramSocket? = null
-      try {
-        udpSocket = DatagramSocket()
-        vpnService.protect(udpSocket)
-        udpSocket.soTimeout = 2500
-
-        var responsePayload: ByteArray? = null
-        var resolvedDnsIp = dnsServerIp
-
-        // Try primary DNS server
-        try {
-          val targetDns = InetAddress.getByAddress(dnsServerIp)
-          val outPacket = DatagramPacket(dnsQuery, dnsQuery.size, targetDns, 53)
-          udpSocket.send(outPacket)
-
-          val responseBuffer = ByteArray(2048)
-          val inPacket = DatagramPacket(responseBuffer, responseBuffer.size)
-          udpSocket.receive(inPacket)
-          responsePayload = inPacket.data.copyOf(inPacket.length)
-        } catch (_: Exception) {
-          // Fallback to 1.1.1.1 or 8.8.8.8
-          for (fallbackDns in UPSTREAM_DNS_SERVERS) {
-            try {
-              val fallbackAddr = InetAddress.getByName(fallbackDns)
-              val outPacket = DatagramPacket(dnsQuery, dnsQuery.size, fallbackAddr, 53)
-              udpSocket.send(outPacket)
-
-              val responseBuffer = ByteArray(2048)
-              val inPacket = DatagramPacket(responseBuffer, responseBuffer.size)
-              udpSocket.receive(inPacket)
-              responsePayload = inPacket.data.copyOf(inPacket.length)
-              resolvedDnsIp = fallbackAddr.address
-              break
-            } catch (_: Exception) {}
-          }
-        }
-
-        if (responsePayload == null) return@launch
-
-        val ipLength = 20 + 8 + responsePayload.size
-        val replyPacket = ByteArray(ipLength)
-
-        replyPacket[0] = 0x45.toByte()
-        replyPacket[1] = 0x00.toByte()
-        replyPacket[2] = ((ipLength shr 8) and 0xFF).toByte()
-        replyPacket[3] = (ipLength and 0xFF).toByte()
-        replyPacket[4] = 0x00.toByte()
-        replyPacket[5] = 0x01.toByte()
-        replyPacket[6] = 0x40.toByte()
-        replyPacket[7] = 0x00.toByte()
-        replyPacket[8] = 64.toByte()
-        replyPacket[9] = 17.toByte() // UDP
-        replyPacket[10] = 0.toByte()
-        replyPacket[11] = 0.toByte()
-        System.arraycopy(resolvedDnsIp, 0, replyPacket, 12, 4)
-        System.arraycopy(clientIp, 0, replyPacket, 16, 4)
-
-        val ipChecksum = computeInternetChecksum(replyPacket, 0, 20)
-        replyPacket[10] = ((ipChecksum shr 8) and 0xFF).toByte()
-        replyPacket[11] = (ipChecksum and 0xFF).toByte()
-
-        val udpOffset = 20
-        val udpLength = 8 + responsePayload.size
-        replyPacket[udpOffset] = ((dnsPort shr 8) and 0xFF).toByte()
-        replyPacket[udpOffset + 1] = (dnsPort and 0xFF).toByte()
-        replyPacket[udpOffset + 2] = ((clientPort shr 8) and 0xFF).toByte()
-        replyPacket[udpOffset + 3] = (clientPort and 0xFF).toByte()
-        replyPacket[udpOffset + 4] = ((udpLength shr 8) and 0xFF).toByte()
-        replyPacket[udpOffset + 5] = (udpLength and 0xFF).toByte()
-        replyPacket[udpOffset + 6] = 0.toByte()
-        replyPacket[udpOffset + 7] = 0.toByte()
-
-        System.arraycopy(responsePayload, 0, replyPacket, udpOffset + 8, responsePayload.size)
-
-        synchronized(outputStream) {
-          outputStream.write(replyPacket, 0, ipLength)
-          outputStream.flush()
-        }
-
-        totalRxBytes.addAndGet(ipLength.toLong())
-      } catch (_: Exception) {
-      } finally {
-        try {
-          udpSocket?.close()
         } catch (_: Exception) {}
       }
     }
@@ -997,7 +992,6 @@ class ZvpnTunnelEngine(
     outStream.write(req.toByteArray(StandardCharsets.UTF_8))
     outStream.flush()
 
-    // Read HTTP response status and headers until \r\n\r\n
     val headerBytes = ByteArrayOutputStream()
     var state = 0
     var totalRead = 0
@@ -1037,12 +1031,10 @@ class ZvpnTunnelEngine(
       }
     }
 
-    // 4-byte random client masking key
     val mask = ByteArray(4)
     Random.nextBytes(mask)
     baos.write(mask)
 
-    // Mask the payload data
     val masked = ByteArray(length)
     for (i in 0 until length) {
       masked[i] = (payload[offset + i].toInt() xor mask[i % 4].toInt()).toByte()
@@ -1091,7 +1083,7 @@ class ZvpnTunnelEngine(
       m
     } else null
 
-    if (len > 4 * 1024 * 1024) return null // Safety cap
+    if (len > 4 * 1024 * 1024) return null
     val payload = ByteArray(len.toInt())
     var totalRead = 0
     while (totalRead < len.toInt()) {
