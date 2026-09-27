@@ -92,23 +92,9 @@ class MainActivity : ComponentActivity() {
 
     setContent {
       ZvpnTheme {
-        val updateStatus by PlayUpdateManager.updateStatus.collectAsState()
-        val isSimulated by PlayUpdateManager.isSimulatedForceUpdate.collectAsState()
         var showSplash by remember { mutableStateOf(true) }
 
-        // If app version is less than Google Play Console version, force update immediately
-        if (updateStatus is PlayUpdateStatus.ForceUpdateRequired) {
-          val details = (updateStatus as PlayUpdateStatus.ForceUpdateRequired).details
-          ForceUpdateScreen(
-            details = details,
-            onCheckAgain = {
-              PlayUpdateManager.checkForUpdates(this@MainActivity, this@MainActivity)
-            },
-            onDismissSimulation = if (isSimulated) {
-              { PlayUpdateManager.setSimulatedForceUpdate(false) }
-            } else null
-          )
-        } else if (showSplash) {
+        if (showSplash) {
           com.zahidcodes.zvpn.ui.screens.SplashScreen(
             onSplashFinished = { showSplash = false }
           )
