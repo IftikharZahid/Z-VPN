@@ -150,6 +150,7 @@ fun ZvpnApp(
   val settings by viewModel.settings.collectAsState()
   val statusMessage by viewModel.statusMessage.collectAsState()
   val activeNetworkType by viewModel.activeNetworkType.collectAsState()
+  val updateStatus by PlayUpdateManager.updateStatus.collectAsState()
 
   // Auto dismiss status notification after 3 seconds
   LaunchedEffect(statusMessage) {
@@ -169,6 +170,15 @@ fun ZvpnApp(
   )
 
   val context = androidx.compose.ui.platform.LocalContext.current
+
+  if (updateStatus is PlayUpdateStatus.ForceUpdateRequired) {
+    val activity = context as? Activity
+    ForceUpdateScreen(
+      details = (updateStatus as PlayUpdateStatus.ForceUpdateRequired).details,
+      onCheckAgain = { PlayUpdateManager.checkForUpdates(context, activity) }
+    )
+    return
+  }
 
   val vpnPrepareLauncher = rememberLauncherForActivityResult(
     contract = ActivityResultContracts.StartActivityForResult()

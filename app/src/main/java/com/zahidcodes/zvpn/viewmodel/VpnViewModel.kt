@@ -29,9 +29,25 @@ import kotlin.random.Random
 
 class VpnViewModel : ViewModel() {
 
-  private var originalIspIp = "185.220.101.4"
+  private var originalIspIp = ""
 
   private val defaultServersList = listOf(
+    Server(
+      id = "vless-id-pusat-91",
+      country = "Indonesia",
+      city = "Pusat (canfingV2rayNG-91)",
+      countryCode = "ID",
+      pingMs = 21,
+      loadPercent = 30,
+      ipAddress = "103.18.49.100",
+      category = ServerCategory.FASTEST,
+      region = "Asia-Pacific",
+      protocolSupport = "VLESS · WS · TLS",
+      isFavorite = true,
+      configUri = "vless://1a5b24bc-6180-4fa7-922d-ba7ee8a7a2b7@103.18.49.100:443?path=%2Fid-pusat&security=tls&alpn=http%2F1.1&encryption=none&insecure=0&host=support.zoom.us.cyylr.eu.cc&fp=chrome&type=ws&allowInsecure=0&sni=support.zoom.us.cyylr.eu.cc#canfingV2rayNG-91",
+      port = 443,
+      uuid = "1a5b24bc-6180-4fa7-922d-ba7ee8a7a2b7"
+    ),
     Server(
       id = "us-ny-01",
       country = "United States",
@@ -248,6 +264,7 @@ class VpnViewModel : ViewModel() {
               isLoading = false
             )
             _currentIp.value = ip
+            if (!isConnected) originalIspIp = ip
             resolved = true
           }
         }
