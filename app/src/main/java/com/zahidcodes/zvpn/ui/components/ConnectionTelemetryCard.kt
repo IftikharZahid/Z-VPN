@@ -15,16 +15,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Business
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Router
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Sensors
 import androidx.compose.material.icons.rounded.Wifi
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zahidcodes.zvpn.model.IpDetails
 import com.zahidcodes.zvpn.model.Server
 import com.zahidcodes.zvpn.model.VpnStatus
 import com.zahidcodes.zvpn.ui.theme.CyanAccent
@@ -46,17 +52,20 @@ import com.zahidcodes.zvpn.ui.theme.TextMuted
 import com.zahidcodes.zvpn.ui.theme.TextMuted2
 import com.zahidcodes.zvpn.ui.theme.TextPrimary
 import com.zahidcodes.zvpn.ui.theme.VibrantBlue
+import com.zahidcodes.zvpn.ui.theme.WarningAmber
 
 @Composable
 fun ConnectionTelemetryCard(
   vpnStatus: VpnStatus,
   selectedServer: Server,
   ipAddress: String,
+  ipDetails: IpDetails = IpDetails(),
   downloadSpeed: String,
   uploadSpeed: String,
   totalDownloadedMb: Double,
   totalUploadedMb: Double,
   activeNetworkType: String = "Wi-Fi / Cellular",
+  onRefreshIp: () -> Unit = {},
   modifier: Modifier = Modifier
 ) {
   val isConnected = vpnStatus == VpnStatus.CONNECTED
@@ -173,56 +182,6 @@ fun ConnectionTelemetryCard(
         icon = Icons.Rounded.ArrowUpward,
         accentColor = CyanAccent,
         modifier = Modifier.weight(1f)
-      )
-    }
-
-    HorizontalDivider(
-      modifier = Modifier.fillMaxWidth(),
-      thickness = 1.dp,
-      color = DarkSurfaceStroke.copy(alpha = 0.6f)
-    )
-
-    // Protocol, IP & Network Technical Details
-    Column(
-      verticalArrangement = Arrangement.spacedBy(3.dp),
-      modifier = Modifier.fillMaxWidth()
-    ) {
-      TelemetrySpecRow(
-        icon = Icons.Rounded.Public,
-        label = "Current IP Address",
-        value = ipAddress,
-        highlightColor = if (isConnected) OkEmerald else CyanAccent
-      )
-
-      TelemetrySpecRow(
-        icon = Icons.Rounded.Wifi,
-        label = "Active Transport",
-        value = if (isConnected) "$activeNetworkType (Auto-Reconnect)" else activeNetworkType,
-        highlightColor = if (isConnected) OkEmerald else CyanAccent
-      )
-
-      TelemetrySpecRow(
-        icon = Icons.Rounded.Router,
-        label = "Protocol & Core",
-        value = selectedServer.protocolSupport
-      )
-
-      TelemetrySpecRow(
-        icon = Icons.Rounded.Security,
-        label = "Tunnel Interface",
-        value = if (isConnected) "tun0 (Android VpnService)" else "Disconnected"
-      )
-
-      TelemetrySpecRow(
-        icon = Icons.Rounded.Memory,
-        label = "Encryption & MTU",
-        value = if (isConnected) "AES-256-GCM · MTU 1500" else "Standard Socket"
-      )
-
-      TelemetrySpecRow(
-        icon = Icons.Rounded.NetworkCheck,
-        label = "Server Latency",
-        value = if (selectedServer.isOnline) "${selectedServer.pingMs} ms (${selectedServer.city})" else "Offline"
       )
     }
   }

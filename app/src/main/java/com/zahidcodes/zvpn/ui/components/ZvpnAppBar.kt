@@ -28,12 +28,32 @@ import com.zahidcodes.zvpn.ui.theme.CyanAccent
 import com.zahidcodes.zvpn.ui.theme.OkEmerald
 import com.zahidcodes.zvpn.ui.theme.TextPrimary
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Link
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import com.zahidcodes.zvpn.ui.theme.DarkSurfaceElevated
+import com.zahidcodes.zvpn.ui.theme.DarkSurfaceStroke
+import com.zahidcodes.zvpn.ui.theme.TextMuted
+
 @Composable
 fun ZvpnAppBar(
   onImportClick: () -> Unit,
+  onAddManualServerClick: () -> Unit = onImportClick,
   onTestPingClick: () -> Unit,
   modifier: Modifier = Modifier
 ) {
+  var showPlusMenu by remember { mutableStateOf(false) }
+
   Row(
     modifier = modifier
       .fillMaxWidth()
@@ -58,48 +78,105 @@ fun ZvpnAppBar(
       )
     }
 
-    // Actions - Ping Test and Plus Import buttons
+    // Actions - Ping Test and Plus Import/Manual buttons
     Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-      // Ping Test Button
+      // Professional Ping Test Button with "Ping" text
       Box(
         modifier = Modifier
-          .size(38.dp)
+          .height(38.dp)
           .clip(RoundedCornerShape(12.dp))
           .background(OkEmerald.copy(alpha = 0.15f))
-          .border(1.dp, OkEmerald.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+          .border(1.dp, OkEmerald.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
           .clickable(onClick = onTestPingClick)
+          .padding(horizontal = 12.dp)
           .testTag("app_bar_test_ping_button"),
         contentAlignment = Alignment.Center
       ) {
-        Icon(
-          imageVector = Icons.Rounded.NetworkPing,
-          contentDescription = "Test Ping & Real Delay",
-          tint = OkEmerald,
-          modifier = Modifier.size(20.dp)
-        )
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.NetworkPing,
+            contentDescription = "Test Ping",
+            tint = OkEmerald,
+            modifier = Modifier.size(16.dp)
+          )
+          Text(
+            text = "Ping",
+            color = OkEmerald,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.3.sp
+          )
+        }
       }
 
-      // Plus Import Button
+      // Plus Add/Import Button with Dropdown Menu
       Box(
         modifier = Modifier
           .size(38.dp)
           .clip(RoundedCornerShape(12.dp))
           .background(CyanAccent.copy(alpha = 0.15f))
           .border(1.dp, CyanAccent.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-          .clickable(onClick = onImportClick)
+          .clickable { showPlusMenu = true }
           .testTag("app_bar_import_button"),
         contentAlignment = Alignment.Center
       ) {
         Icon(
           imageVector = Icons.Rounded.Add,
-          contentDescription = "Import Configuration",
+          contentDescription = "Add or Import Server",
           tint = CyanAccent,
           modifier = Modifier.size(20.dp)
         )
+
+        DropdownMenu(
+          expanded = showPlusMenu,
+          onDismissRequest = { showPlusMenu = false },
+          modifier = Modifier
+            .background(DarkSurfaceElevated)
+            .border(1.dp, DarkSurfaceStroke, RoundedCornerShape(8.dp))
+            .testTag("app_bar_plus_dropdown_menu")
+        ) {
+          DropdownMenuItem(
+            text = {
+              Column {
+                Text("Import Config Link / URI", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("VLESS, Trojan, VMess, WireGuard link", color = TextMuted, fontSize = 10.5.sp)
+              }
+            },
+            leadingIcon = {
+              Icon(Icons.Rounded.Link, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
+            },
+            onClick = {
+              showPlusMenu = false
+              onImportClick()
+            },
+            colors = MenuDefaults.itemColors()
+          )
+
+          DropdownMenuItem(
+            text = {
+              Column {
+                Text("Add Server Manually", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text("Custom host, port, credentials & connect", color = TextMuted, fontSize = 10.5.sp)
+              }
+            },
+            leadingIcon = {
+              Icon(Icons.Rounded.Dns, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
+            },
+            onClick = {
+              showPlusMenu = false
+              onAddManualServerClick()
+            },
+            colors = MenuDefaults.itemColors()
+          )
+        }
       }
     }
   }
 }
+

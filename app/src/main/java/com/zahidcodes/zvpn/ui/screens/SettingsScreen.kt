@@ -1,5 +1,6 @@
 package com.zahidcodes.zvpn.ui.screens
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Message
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Shield
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VpnLock
 import androidx.compose.material.icons.rounded.Wifi
 import androidx.compose.material3.AlertDialog
@@ -46,6 +49,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,7 +65,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zahidcodes.zvpn.BuildConfig
+import com.zahidcodes.zvpn.core.PlayUpdateManager
+import com.zahidcodes.zvpn.core.PlayUpdateStatus
 import com.zahidcodes.zvpn.model.VpnSettings
+
 import com.zahidcodes.zvpn.ui.components.ZvpnLogoMark
 import com.zahidcodes.zvpn.ui.theme.CyanAccent
 import com.zahidcodes.zvpn.ui.theme.DarkSurfaceCard
@@ -80,6 +88,9 @@ fun SettingsScreen(
   modifier: Modifier = Modifier
 ) {
   val context = LocalContext.current
+  val activity = context as? Activity
+  val updateStatus by PlayUpdateManager.updateStatus.collectAsState()
+  val isSimulated by PlayUpdateManager.isSimulatedForceUpdate.collectAsState()
   var showProtocolDialog by remember { mutableStateOf(false) }
   var showAboutDialog by remember { mutableStateOf(false) }
 
@@ -279,6 +290,51 @@ fun SettingsScreen(
       }
     }
 
+    // Google Play Updates Group
+    item {
+      SettingsGroup(title = "UPDATES & GOOGLE PLAY CONSOLE") {
+        val statusSubtitle = when (updateStatus) {
+          is PlayUpdateStatus.Checking -> "Connecting to Google Play Console..."
+          is PlayUpdateStatus.ForceUpdateRequired -> "⚠️ Update required! App version is older than Play Store"
+          is PlayUpdateStatus.UpdateAvailable -> "New version ready on Google Play Store"
+          is PlayUpdateStatus.UpToDate -> "Up to date with official Google Play Console"
+          is PlayUpdateStatus.Error -> "Could not reach Play Store · Tap to retry"
+          else -> "Tap to verify latest version on Play Console"
+        }
+
+        SettingsClickableRow(
+          icon = Icons.Rounded.SystemUpdate,
+          title = "Check for Play Console Updates",
+          subtitle = "v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) · $statusSubtitle",
+          onClick = {
+            PlayUpdateManager.checkForUpdates(context, activity)
+          },
+          testTag = "setting_check_updates"
+        )
+
+        SettingsClickableRow(
+          icon = Icons.Rounded.CloudDownload,
+          title = "Open Google Play Store Page",
+          subtitle = "View ZVPN on Google Play Store for new releases",
+          onClick = {
+            PlayUpdateManager.openPlayStore(context)
+          },
+          testTag = "setting_open_play_store"
+        )
+
+        SettingsToggleRow(
+          icon = Icons.Rounded.Security,
+          title = "Simulate Play Force Update",
+          subtitle = "Preview mandatory update lock screen instantly (Test Mode)",
+          checked = isSimulated,
+          onCheckedChange = { enabled ->
+            PlayUpdateManager.setSimulatedForceUpdate(enabled)
+          },
+          testTag = "setting_simulate_update_toggle"
+        )
+      }
+    }
+
     // App & Developer Info Group
     item {
       SettingsGroup(title = "APP & DEVELOPER INFO") {
@@ -286,7 +342,7 @@ fun SettingsScreen(
         SettingsClickableRow(
           icon = Icons.Rounded.Info,
           title = "About ZVPN & Developer",
-          subtitle = "Developer: Iftikhar Zahid · Client v6.0.0 · Support",
+          subtitle = "Developer: Iftikhar Zahid · Client v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) · Support",
           onClick = { showAboutDialog = true }
         )
       }
@@ -460,7 +516,7 @@ fun SettingsScreen(
           }
 
           Text(
-            text = "ZVPN Client v6.0.0 (Build 6)",
+            text = "ZVPN Client v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})",
             color = TextPrimary,
             fontWeight = FontWeight.SemiBold,
             fontSize = 12.5.sp

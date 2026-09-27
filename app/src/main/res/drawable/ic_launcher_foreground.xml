@@ -1,96 +1,138 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/apk/res-auto"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
 
-  <!-- Outer Shield Frame - Blue Left to Gold Right -->
+  <!-- 1. Exterior Glowing Shield Aura -->
   <path
-      android:pathData="M256,70 L100,130 C98,235 138,315 256,370"
+      android:pathData="M256,92 L416,150 C416,310 336,400 256,442 C176,400 96,310 96,150 Z"
       android:strokeWidth="16"
       android:strokeLineCap="round"
       android:strokeLineJoin="round">
     <aapt:attr name="android:strokeColor">
       <gradient
-          android:startX="100"
-          android:startY="70"
-          android:endX="256"
-          android:endY="370"
+          android:startX="96"
+          android:startY="92"
+          android:endX="416"
+          android:endY="442"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF00D5FF"/>
-        <item android:offset="0.5" android:color="#FF0066FF"/>
-        <item android:offset="1.0" android:color="#FF0033CC"/>
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="0.4" android:color="#FF3B82F6"/>
+        <item android:offset="0.8" android:color="#FF10B981"/>
+        <item android:offset="1.0" android:color="#FF34D399"/>
       </gradient>
     </aapt:attr>
   </path>
 
+  <!-- 2. Shield Body - Vibrant Cyber Sapphire & Cobalt Plate -->
   <path
-      android:pathData="M256,70 L412,130 C414,235 374,315 256,370"
-      android:strokeWidth="16"
-      android:strokeLineCap="round"
-      android:strokeLineJoin="round">
-    <aapt:attr name="android:strokeColor">
+      android:pathData="M256,104 L402,157 C402,298 330,380 256,420 C182,380 110,298 110,157 Z">
+    <aapt:attr name="android:fillColor">
       <gradient
           android:startX="256"
-          android:startY="70"
-          android:endX="412"
-          android:endY="370"
+          android:startY="104"
+          android:endX="256"
+          android:endY="420"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FFFFE600"/>
-        <item android:offset="0.5" android:color="#FFFFB700"/>
-        <item android:offset="1.0" android:color="#FFFF8800"/>
+        <item android:offset="0.0" android:color="#FF1E40AF"/>
+        <item android:offset="0.4" android:color="#FF172554"/>
+        <item android:offset="1.0" android:color="#FF0F172A"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Inner White 'Z' Top Bar & Diagonal -->
+  <!-- 3. Dynamic Bevel Right Wing (3D Lighting Dimension) -->
   <path
-      android:pathData="M150,150 h210 l-16,32 H220 L310,275 H150 l18,-32 h110 L180,150 z">
+      android:pathData="M256,104 L402,157 C402,298 330,380 256,420 Z">
     <aapt:attr name="android:fillColor">
       <gradient
-          android:startX="150"
-          android:startY="150"
-          android:endX="360"
-          android:endY="275"
+          android:startX="256"
+          android:startY="104"
+          android:endX="402"
+          android:endY="420"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FFFFFFFF"/>
-        <item android:offset="1.0" android:color="#FFB3D9FF"/>
+        <item android:offset="0.0" android:color="#33FFFFFF"/>
+        <item android:offset="0.5" android:color="#1A000000"/>
+        <item android:offset="1.0" android:color="#4D000000"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Gold 'Z' Bottom Sweep Accent -->
+  <!-- 4. Modern Speed Orbit Ring in Glowing Cyan -->
   <path
-      android:pathData="M140,320 h220 c5,0 8,-4 6,-8 l-18,-34 h-160 L310,180 l-28,20 L140,320 z">
-    <aapt:attr name="android:fillColor">
+      android:pathData="M120,290 C140,210 240,150 350,165 C400,172 425,195 405,230 C380,270 260,335 160,320 C135,316 115,306 120,290 Z"
+      android:strokeWidth="7"
+      android:strokeLineCap="round">
+    <aapt:attr name="android:strokeColor">
       <gradient
-          android:startX="140"
-          android:startY="180"
-          android:endX="360"
+          android:startX="120"
+          android:startY="165"
+          android:endX="425"
           android:endY="320"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FFFFEA00"/>
-        <item android:offset="0.6" android:color="#FFFFB700"/>
-        <item android:offset="1.0" android:color="#FFFF8800"/>
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="0.6" android:color="#FF60A5FA"/>
+        <item android:offset="1.0" android:color="#FF34D399"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Bold 'VPN' Text at Bottom -->
-  <!-- V -->
+  <!-- 5. Stylized Aerodynamic Modern 'Z' Main Silhouette -->
   <path
-      android:pathData="M160,390 h18 l15,30 l15,-30 h18 l-23,42 h-20 L160,390 z"
-      android:fillColor="#FFFFFF"/>
+      android:pathData="M165,180 H345 L320,222 H242 L345,322 H165 L190,280 H268 L165,180 Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:startX="165"
+          android:startY="180"
+          android:endX="345"
+          android:endY="322"
+          android:type="linear">
+        <item android:offset="0.0" android:color="#FFFFFFFF"/>
+        <item android:offset="0.3" android:color="#FFE0F2FE"/>
+        <item android:offset="0.7" android:color="#FF38BDF8"/>
+        <item android:offset="1.0" android:color="#FF0284C7"/>
+      </gradient>
+    </aapt:attr>
+  </path>
 
-  <!-- P -->
+  <!-- 6. Electric Cyan Highlight on Lower Sweep of 'Z' -->
   <path
-      android:pathData="M238,390 h26 c12,0 18,6 18,14 c0,8 -6,14 -18,14 h-13 v14 h-13 V390 z M251,406 h10 c4,0 6,-2 6,-4 c0,-2 -2,-4 -6,-4 h-10 V406 z"
-      android:fillColor="#FFFFFF"/>
+      android:pathData="M220,280 L345,280 L320,322 H165 Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:startX="165"
+          android:startY="280"
+          android:endX="345"
+          android:endY="322"
+          android:type="linear">
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="1.0" android:color="#FF0099FF"/>
+      </gradient>
+    </aapt:attr>
+  </path>
 
-  <!-- N -->
+  <!-- 7. Center Security Diamond Lock Emblem (Emerald & Cyan Core) -->
   <path
-      android:pathData="M294,390 h13 l22,30 v-30 h13 v42 h-13 l-22,-30 v30 h-13 V390 z"
-      android:fillColor="#FFFFFF"/>
+      android:pathData="M256,236 L276,256 L256,276 L236,256 Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:startX="236"
+          android:startY="236"
+          android:endX="276"
+          android:endY="276"
+          android:type="linear">
+        <item android:offset="0.0" android:color="#FF6EE7B7"/>
+        <item android:offset="0.5" android:color="#FF10B981"/>
+        <item android:offset="1.0" android:color="#FF047857"/>
+      </gradient>
+    </aapt:attr>
+  </path>
+
+  <!-- Core Spark Dot -->
+  <path
+      android:pathData="M256,252 A4,4 0 1,1 256,260 A4,4 0 1,1 256,252 Z"
+      android:fillColor="#FFFFFFFF" />
 
 </vector>

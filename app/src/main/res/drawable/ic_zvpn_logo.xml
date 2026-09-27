@@ -1,23 +1,39 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/apk/res-auto"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="128dp"
     android:height="128dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
 
-  <!-- Background Base: Deep Cyber Navy Squircle -->
+  <!-- Background Base: Deep Cyber Navy & Electric Blue Squircle -->
   <path
       android:pathData="M112,0h288c62,0 112,50 112,112v288c0,62 -50,112 -112,112H112C50,512 0,462 0,400V112C0,50 50,0 112,0z">
     <aapt:attr name="android:fillColor">
       <gradient
-          android:startX="256"
+          android:startX="0"
           android:startY="0"
-          android:endX="256"
+          android:endX="512"
           android:endY="512"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF0D1B2A"/>
-        <item android:offset="0.5" android:color="#FF080E18"/>
-        <item android:offset="1.0" android:color="#FF03060C"/>
+        <item android:offset="0.0" android:color="#FF1E40AF"/>
+        <item android:offset="0.5" android:color="#FF0F2B66"/>
+        <item android:offset="1.0" android:color="#FF071638"/>
+      </gradient>
+    </aapt:attr>
+  </path>
+
+  <!-- Cyan Neon Ambient Glow -->
+  <path
+      android:pathData="M112,0h288c62,0 112,50 112,112v288c0,62 -50,112 -112,112H112C50,512 0,462 0,400V112C0,50 50,0 112,0z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:centerX="140"
+          android:centerY="120"
+          android:gradientRadius="280"
+          android:type="radial">
+        <item android:offset="0.0" android:color="#4D00F0FF"/>
+        <item android:offset="0.6" android:color="#1A0088FF"/>
+        <item android:offset="1.0" android:color="#00000000"/>
       </gradient>
     </aapt:attr>
   </path>
@@ -25,7 +41,7 @@
   <!-- 1. GLOWING OUTER SHIELD CONTOUR -->
   <path
       android:pathData="M256,52 L432,112 C432,288 340,396 256,448 C172,396 80,288 80,112 Z"
-      android:strokeWidth="14"
+      android:strokeWidth="16"
       android:strokeLineCap="round"
       android:strokeLineJoin="round">
     <aapt:attr name="android:strokeColor">
@@ -35,14 +51,15 @@
           android:endX="432"
           android:endY="448"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF00F0FF"/>
-        <item android:offset="0.5" android:color="#FF0066FF"/>
-        <item android:offset="1.0" android:color="#FF3B82F6"/>
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="0.45" android:color="#FF3B82F6"/>
+        <item android:offset="0.8" android:color="#FF10B981"/>
+        <item android:offset="1.0" android:color="#FF34D399"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Inner Dark Shield Core -->
+  <!-- 2. Inner Metallic Shield Core -->
   <path
       android:pathData="M256,72 L412,125 C412,275 328,375 256,420 C184,375 100,275 100,125 Z">
     <aapt:attr name="android:fillColor">
@@ -52,123 +69,101 @@
           android:endX="256"
           android:endY="420"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF0B2347"/>
-        <item android:offset="0.6" android:color="#FF061226"/>
-        <item android:offset="1.0" android:color="#FF020610"/>
+        <item android:offset="0.0" android:color="#FF1E3A8A"/>
+        <item android:offset="0.5" android:color="#FF172554"/>
+        <item android:offset="1.0" android:color="#FF0B1329"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- 2. SPEED ORBIT RING (CYAN & GOLD) -->
+  <!-- 3. Dynamic Bevel Right Wing -->
   <path
-      android:pathData="M70,300 C90,210 210,130 350,140 C430,145 470,180 430,230 C390,280 230,340 120,330 C80,325 55,315 70,300 Z"
+      android:pathData="M256,72 L412,125 C412,275 328,375 256,420 Z">
+    <aapt:attr name="android:fillColor">
+      <gradient
+          android:startX="256"
+          android:startY="72"
+          android:endX="412"
+          android:endY="420"
+          android:type="linear">
+        <item android:offset="0.0" android:color="#33FFFFFF"/>
+        <item android:offset="1.0" android:color="#4D000000"/>
+      </gradient>
+    </aapt:attr>
+  </path>
+
+  <!-- 4. SPEED ORBIT RING -->
+  <path
+      android:pathData="M90,300 C110,210 215,135 345,150 C410,158 438,185 415,225 C385,270 250,335 135,325 C105,320 85,310 90,300 Z"
       android:strokeWidth="10"
       android:strokeLineCap="round">
     <aapt:attr name="android:strokeColor">
       <gradient
-          android:startX="70"
-          android:startY="140"
-          android:endX="450"
-          android:endY="330"
+          android:startX="90"
+          android:startY="150"
+          android:endX="438"
+          android:endY="325"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF00F0FF"/>
-        <item android:offset="0.5" android:color="#FFFFB700"/>
-        <item android:offset="1.0" android:color="#FFFFE600"/>
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="0.5" android:color="#FF60A5FA"/>
+        <item android:offset="1.0" android:color="#FF34D399"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- 3. GEOMETRIC EMBLEMATIC 'Z' SYMBOL -->
-  <!-- Top Bar & Diagonal Wing of Z -->
+  <!-- 5. GEOMETRIC EMBLEMATIC 'Z' SYMBOL -->
   <path
-      android:pathData="M160,160 H352 L220,310 H352 V340 H160 L292,190 H160 Z">
+      android:pathData="M165,170 H347 L318,220 H240 L347,322 H165 L194,272 H272 L165,170 Z">
     <aapt:attr name="android:fillColor">
       <gradient
-          android:startX="160"
-          android:startY="160"
-          android:endX="352"
-          android:endY="340"
+          android:startX="165"
+          android:startY="170"
+          android:endX="347"
+          android:endY="322"
           android:type="linear">
         <item android:offset="0.0" android:color="#FFFFFFFF"/>
-        <item android:offset="0.5" android:color="#FFCFFAFE"/>
-        <item android:offset="1.0" android:color="#FF38BDF8"/>
+        <item android:offset="0.4" android:color="#FFE0F2FE"/>
+        <item android:offset="0.75" android:color="#FF38BDF8"/>
+        <item android:offset="1.0" android:color="#FF0284C7"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Bottom Accent Wing of Z (Electric Blue) -->
+  <!-- 6. Electric Cyan Highlight on Lower Wing of Z -->
   <path
-      android:pathData="M220,310 L352,310 L320,350 H160 Z">
+      android:pathData="M225,272 L347,272 L318,322 H165 Z">
     <aapt:attr name="android:fillColor">
       <gradient
-          android:startX="160"
-          android:startY="310"
-          android:endX="352"
-          android:endY="350"
+          android:startX="165"
+          android:startY="272"
+          android:endX="347"
+          android:endY="322"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF00F0FF"/>
-        <item android:offset="1.0" android:color="#FF0066FF"/>
+        <item android:offset="0.0" android:color="#FF00F5FF"/>
+        <item android:offset="1.0" android:color="#FF0088FF"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- 4. SECURITY PADLOCK INSIGNIA -->
-  <!-- Padlock Shackle -->
+  <!-- 7. Center Security Diamond Lock (Emerald & Cyan Core) -->
   <path
-      android:pathData="M236,220 V200 C236,188 245,178 256,178 C267,178 276,188 276,200 V220"
-      android:strokeColor="#00F0FF"
-      android:strokeWidth="6"
-      android:strokeLineCap="round"/>
-
-  <!-- Padlock Body -->
-  <path
-      android:pathData="M228,220 H284 C288,220 292,224 292,228 V256 C292,260 288,264 284,264 H228 C224,264 220,260 220,256 V228 C220,224 224,220 228,220 Z"
-      android:fillColor="#00F0FF"/>
-
-  <!-- Padlock Keyhole Node -->
-  <path
-      android:pathData="M256,236 A3,3 0 1,0 256,242 A3,3 0 1,0 256,236 M256,242 V250"
-      android:strokeColor="#0B2347"
-      android:strokeWidth="3.5"
-      android:strokeLineCap="round"/>
-
-  <!-- 5. BOLD 'ZVPN' BANNER AT BOTTOM -->
-  <!-- Banner Frame -->
-  <path
-      android:pathData="M140,400 H372 C385,400 395,410 392,423 L386,450 C383,460 374,468 362,468 H150 C138,468 129,460 126,450 L120,423 C117,410 127,400 140,400 Z">
+      android:pathData="M256,234 L278,256 L256,278 L234,256 Z">
     <aapt:attr name="android:fillColor">
       <gradient
-          android:startX="120"
-          android:startY="400"
-          android:endX="392"
-          android:endY="468"
+          android:startX="234"
+          android:startY="234"
+          android:endX="278"
+          android:endY="278"
           android:type="linear">
-        <item android:offset="0.0" android:color="#FF0052D4"/>
-        <item android:offset="0.5" android:color="#FF4364F7"/>
-        <item android:offset="1.0" android:color="#FF6FB1FC"/>
+        <item android:offset="0.0" android:color="#FF6EE7B7"/>
+        <item android:offset="0.5" android:color="#FF10B981"/>
+        <item android:offset="1.0" android:color="#FF047857"/>
       </gradient>
     </aapt:attr>
   </path>
 
-  <!-- Banner Lettering: ZVPN -->
-  <!-- Z -->
   <path
-      android:pathData="M165,420 H195 L170,448 H195 V454 H160 L185,426 H165 Z"
-      android:fillColor="#FFFFFF"/>
-
-  <!-- V -->
-  <path
-      android:pathData="M210,420 H220 L232,448 L244,420 H254 L237,454 H227 Z"
-      android:fillColor="#FFFFFF"/>
-
-  <!-- P -->
-  <path
-      android:pathData="M268,420 H290 C297,420 302,424 302,430 C302,436 297,440 290,440 H278 V454 H268 Z M278,432 H288 C291,432 293,431 293,430 C293,429 291,428 288,428 H278 Z"
-      android:fillColor="#FFFFFF"/>
-
-  <!-- N -->
-  <path
-      android:pathData="M316,420 H326 L342,444 V420 H352 V454 H342 L326,430 V454 H316 Z"
-      android:fillColor="#FFFFFF"/>
+      android:pathData="M256,252 A4,4 0 1,1 256,260 A4,4 0 1,1 256,252 Z"
+      android:fillColor="#FFFFFFFF" />
 
 </vector>

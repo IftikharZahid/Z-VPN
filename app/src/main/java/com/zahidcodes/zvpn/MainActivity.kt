@@ -72,6 +72,9 @@ import com.zahidcodes.zvpn.ui.theme.DarkSurfaceStroke
 import com.zahidcodes.zvpn.ui.theme.OkEmerald
 import com.zahidcodes.zvpn.ui.theme.TextPrimary
 import com.zahidcodes.zvpn.ui.theme.ZvpnTheme
+import com.zahidcodes.zvpn.core.PlayUpdateManager
+import com.zahidcodes.zvpn.core.PlayUpdateStatus
+import com.zahidcodes.zvpn.ui.screens.ForceUpdateScreen
 import com.zahidcodes.zvpn.viewmodel.VpnViewModel
 import kotlinx.coroutines.delay
 
@@ -82,10 +85,30 @@ class MainActivity : ComponentActivity() {
       statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
       navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
     )
+
+    // Initialize and trigger auto-update check from Google Play Console upon app startup
+    PlayUpdateManager.init(this)
+    PlayUpdateManager.checkForUpdates(this, this)
+
     setContent {
       ZvpnTheme {
+        val updateStatus by PlayUpdateManager.updateStatus.collectAsState()
+        val isSimulated by PlayUpdateManager.isSimulatedForceUpdate.collectAsState()
         var showSplash by remember { mutableStateOf(true) }
-        if (showSplash) {
+
+        // If app version is less than Google Play Console version, force update immediately
+        if (updateStatus is PlayUpdateStatus.ForceUpdateRequired) {
+          val details = (updateStatus as PlayUpdateStatus.ForceUpdateRequired).details
+          ForceUpdateScreen(
+            details = details,
+            onCheckAgain = {
+              PlayUpdateManager.checkForUpdates(this@MainActivity, this@MainActivity)
+            },
+            onDismissSimulation = if (isSimulated) {
+              { PlayUpdateManager.setSimulatedForceUpdate(false) }
+            } else null
+          )
+        } else if (showSplash) {
           com.zahidcodes.zvpn.ui.screens.SplashScreen(
             onSplashFinished = { showSplash = false }
           )
@@ -95,7 +118,25 @@ class MainActivity : ComponentActivity() {
       }
     }
   }
+
+  override fun onResume() {
+    super.onResume()
+    // Resume in-progress update flow if user switched back to the app
+    PlayUpdateManager.resumeUpdateIfInProgress(this)
+  }
+
+  @Deprecated("Deprecated in Java")
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+    super.onActivityResult(requestCode, resultCode, data)
+    if (requestCode == PlayUpdateManager.REQUEST_CODE_IMMEDIATE_UPDATE) {
+      if (resultCode != Activity.RESULT_OK) {
+        // If mandatory update was canceled or failed, re-trigger check to enforce update
+        PlayUpdateManager.checkForUpdates(this, this)
+      }
+    }
+  }
 }
+
 
 @Composable
 fun ZvpnApp(
@@ -103,6 +144,7 @@ fun ZvpnApp(
 ) {
   var currentScreen by remember { mutableStateOf(VpnScreen.HOME) }
   var showImportDialog by remember { mutableStateOf(false) }
+  var importDialogInitialTab by remember { androidx.compose.runtime.mutableIntStateOf(0) }
 
   val vpnStatus by viewModel.vpnStatus.collectAsState()
   val selectedServer by viewModel.selectedServer.collectAsState()
@@ -111,6 +153,7 @@ fun ZvpnApp(
   val selectedCategory by viewModel.selectedCategory.collectAsState()
   val selectedSortOption by viewModel.selectedSortOption.collectAsState()
   val currentIp by viewModel.currentIp.collectAsState()
+  val ipDetails by viewModel.ipDetails.collectAsState()
   val downloadSpeed by viewModel.downloadSpeed.collectAsState()
   val uploadSpeed by viewModel.uploadSpeed.collectAsState()
   val sessionDuration by viewModel.sessionDurationSeconds.collectAsState()
@@ -210,7 +253,14 @@ fun ZvpnApp(
           ) {
             // Shared App Bar
             ZvpnAppBar(
-              onImportClick = { showImportDialog = true },
+              onImportClick = {
+                importDialogInitialTab = 0
+                showImportDialog = true
+              },
+              onAddManualServerClick = {
+                importDialogInitialTab = 1
+                showImportDialog = true
+              },
               onTestPingClick = { viewModel.pingAllServers() }
             )
 
@@ -227,6 +277,7 @@ fun ZvpnApp(
                   vpnStatus = vpnStatus,
                   selectedServer = selectedServer,
                   ipAddress = currentIp,
+                  ipDetails = ipDetails,
                   downloadSpeed = downloadSpeed,
                   uploadSpeed = uploadSpeed,
                   sessionSeconds = sessionDuration,
@@ -235,7 +286,8 @@ fun ZvpnApp(
                   activeNetworkType = activeNetworkType,
                   settings = settings,
                   onToggleConnection = { handleToggleConnection() },
-                  onSelectServerClick = { currentScreen = VpnScreen.SERVERS }
+                  onSelectServerClick = { currentScreen = VpnScreen.SERVERS },
+                  onRefreshIp = { viewModel.fetchRealPublicIp() }
                 )
               }
               VpnScreen.SERVERS -> {
@@ -262,6 +314,14 @@ fun ZvpnApp(
                   onPingAll = { viewModel.pingAllServers() },
                   onDeleteServer = { viewModel.deleteServer(it) },
                   onClearAllImported = { viewModel.clearAllImportedServers() },
+                  onImportClick = {
+                    importDialogInitialTab = 0
+                    showImportDialog = true
+                  },
+                  onAddManualClick = {
+                    importDialogInitialTab = 1
+                    showImportDialog = true
+                  },
                   onUploadFirestore = { viewModel.uploadCurrentServersToFirestore() },
                   schemaJson = viewModel.getServerSchemaSampleJson(),
                   onBackClick = { currentScreen = VpnScreen.HOME }
@@ -334,10 +394,18 @@ fun ZvpnApp(
 
   if (showImportDialog) {
     ImportConfigDialog(
+      initialTab = importDialogInitialTab,
       onDismiss = { showImportDialog = false },
       onImport = { rawConfigs ->
         viewModel.importConfigs(rawConfigs, context)
         showImportDialog = false
+      },
+      onAddManualServer = { manualServer, andConnect ->
+        viewModel.addManualServer(manualServer, false, context)
+        showImportDialog = false
+        if (andConnect) {
+          requestConnection()
+        }
       }
     )
   }

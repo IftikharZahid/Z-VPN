@@ -6,7 +6,9 @@ import android.os.Build
 import android.util.Base64
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.zahidcodes.zvpn.core.VpnConfigParser
 import com.zahidcodes.zvpn.core.VpnStateManager
+import com.zahidcodes.zvpn.model.IpDetails
 import com.zahidcodes.zvpn.model.Server
 import com.zahidcodes.zvpn.model.ServerCategory
 import com.zahidcodes.zvpn.model.ServerSortOption
@@ -21,6 +23,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import java.nio.charset.StandardCharsets
 import kotlin.random.Random
 
 class VpnViewModel : ViewModel() {
@@ -138,6 +142,9 @@ class VpnViewModel : ViewModel() {
   private val _sessionDurationSeconds = MutableStateFlow(0L)
   val sessionDurationSeconds: StateFlow<Long> = _sessionDurationSeconds.asStateFlow()
 
+  private val _ipDetails = MutableStateFlow(IpDetails(isLoading = true))
+  val ipDetails: StateFlow<IpDetails> = _ipDetails.asStateFlow()
+
   init {
     fetchRealPublicIp()
     fetchServersFromFirestore()
@@ -151,6 +158,20 @@ class VpnViewModel : ViewModel() {
         if (active != null) {
           _selectedServer.value = active
         }
+      }
+    }
+    viewModelScope.launch {
+      VpnStateManager.vpnStatus.collect { status ->
+        // When VPN status transitions, refresh public IP details to capture new protected IP or restored ISP IP
+        delay(700L)
+        fetchRealPublicIp()
+      }
+    }
+    // Auto-refresh IP details every 30 seconds
+    viewModelScope.launch {
+      while (true) {
+        delay(30000L)
+        fetchRealPublicIp()
       }
     }
   }
@@ -172,32 +193,200 @@ class VpnViewModel : ViewModel() {
     }
   }
 
-  private fun fetchRealPublicIp() {
+  fun fetchRealPublicIp() {
     viewModelScope.launch(Dispatchers.IO) {
-      val endpoints = listOf(
-        "https://api.ipify.org",
-        "https://ifconfig.me/ip",
-        "https://icanhazip.com"
-      )
-      for (endpoint in endpoints) {
+      val isConnected = VpnStateManager.vpnStatus.value == VpnStatus.CONNECTED
+      val currentServer = selectedServer.value
+
+      // Immediate pre-population so user never sees blank or dummy data
+      if (isConnected) {
+        _ipDetails.update { curr ->
+          curr.copy(
+            ip = if (curr.ip != "—" && curr.isVpnProtected) curr.ip else currentServer.ipAddress,
+            country = currentServer.country,
+            countryCode = currentServer.countryCode,
+            city = currentServer.city,
+            isp = "${currentServer.protocolSupport} Secure Gateway",
+            isVpnProtected = true,
+            isLoading = true
+          )
+        }
+      } else {
+        _ipDetails.update { it.copy(isLoading = true) }
+      }
+
+      var resolved = false
+
+      // 1. Primary: freeipapi.com (reliable, 100% free HTTPS, rich details)
+      try {
+        val url = java.net.URL("https://freeipapi.com/api/json")
+        val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+          connectTimeout = 3500
+          readTimeout = 3500
+          requestMethod = "GET"
+          setRequestProperty("User-Agent", "Mozilla/5.0 ZVPN-Android-Client")
+          setRequestProperty("Accept", "application/json")
+        }
+        if (conn.responseCode == 200) {
+          val response = conn.inputStream.bufferedReader().use { it.readText() }
+          val json = JSONObject(response)
+          val ip = json.optString("ipAddress", "")
+          val country = json.optString("countryName", if (isConnected) currentServer.country else "")
+          val countryCode = json.optString("countryCode", if (isConnected) currentServer.countryCode else "")
+          val city = json.optString("cityName", if (isConnected) currentServer.city else "")
+          val isp = json.optString("isp", "")
+
+          if (ip.isNotBlank() && (ip.contains(".") || ip.contains(":"))) {
+            _ipDetails.value = IpDetails(
+              ip = ip,
+              country = country.ifBlank { if (isConnected) currentServer.country else "Global" },
+              countryCode = countryCode.ifBlank { if (isConnected) currentServer.countryCode else "" },
+              city = city.ifBlank { if (isConnected) currentServer.city else "" },
+              isp = isp.ifBlank { if (isConnected) "${currentServer.protocolSupport} Protected Gateway" else "Internet Service Provider" },
+              isVpnProtected = isConnected,
+              lastUpdated = System.currentTimeMillis(),
+              isLoading = false
+            )
+            _currentIp.value = ip
+            resolved = true
+          }
+        }
+      } catch (e: Exception) {
+        // Fall through
+      }
+
+      // 2. Secondary: ipinfo.io
+      if (!resolved) {
         try {
-          val url = java.net.URL(endpoint)
-          val conn = url.openConnection() as java.net.HttpURLConnection
-          conn.connectTimeout = 3000
-          conn.readTimeout = 3000
-          conn.requestMethod = "GET"
+          val url = java.net.URL("https://ipinfo.io/json")
+          val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 3500
+            readTimeout = 3500
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "curl/8.0 ZVPN")
+            setRequestProperty("Accept", "application/json")
+          }
           if (conn.responseCode == 200) {
-            val fetchedIp = conn.inputStream.bufferedReader().use { it.readText() }.trim()
-            if (fetchedIp.isNotBlank() && (fetchedIp.contains(".") || fetchedIp.contains(":")) && fetchedIp.length <= 45) {
-              originalIspIp = fetchedIp
-              if (_vpnStatus.value == VpnStatus.DISCONNECTED) {
-                _currentIp.value = fetchedIp
-              }
-              break
+            val response = conn.inputStream.bufferedReader().use { it.readText() }
+            val json = JSONObject(response)
+            val ip = json.optString("ip", "")
+            val city = json.optString("city", if (isConnected) currentServer.city else "")
+            val countryCode = json.optString("country", if (isConnected) currentServer.countryCode else "")
+            val org = json.optString("org", "")
+
+            if (ip.isNotBlank()) {
+              _ipDetails.value = IpDetails(
+                ip = ip,
+                country = if (isConnected) currentServer.country else countryCode,
+                countryCode = countryCode,
+                city = city,
+                isp = org.ifBlank { if (isConnected) "${currentServer.protocolSupport} Relay" else "Public Network" },
+                isVpnProtected = isConnected,
+                lastUpdated = System.currentTimeMillis(),
+                isLoading = false
+              )
+              _currentIp.value = ip
+              resolved = true
             }
           }
         } catch (e: Exception) {
-          // ignore and try next endpoint
+          // Fall through
+        }
+      }
+
+      // 3. Tertiary: ipwho.is
+      if (!resolved) {
+        try {
+          val url = java.net.URL("https://ipwho.is/")
+          val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+            connectTimeout = 3500
+            readTimeout = 3500
+            requestMethod = "GET"
+            setRequestProperty("User-Agent", "ZVPN-Android-Client")
+          }
+          if (conn.responseCode == 200) {
+            val response = conn.inputStream.bufferedReader().use { it.readText() }
+            val json = JSONObject(response)
+            if (json.optBoolean("success", true)) {
+              val ip = json.optString("ip", "")
+              val country = json.optString("country", if (isConnected) currentServer.country else "")
+              val countryCode = json.optString("country_code", if (isConnected) currentServer.countryCode else "")
+              val city = json.optString("city", if (isConnected) currentServer.city else "")
+              val connObj = json.optJSONObject("connection")
+              val isp = connObj?.optString("isp", "") ?: json.optString("isp", "")
+
+              if (ip.isNotBlank()) {
+                _ipDetails.value = IpDetails(
+                  ip = ip,
+                  country = country,
+                  countryCode = countryCode,
+                  city = city,
+                  isp = isp.ifBlank { if (isConnected) "ZVPN Secure Gateway" else "Internet Service Provider" },
+                  isVpnProtected = isConnected,
+                  lastUpdated = System.currentTimeMillis(),
+                  isLoading = false
+                )
+                _currentIp.value = ip
+                resolved = true
+              }
+            }
+          }
+        } catch (e: Exception) {
+          // Fall through
+        }
+      }
+
+      // 4. Raw IP fallback: api.ipify.org
+      if (!resolved) {
+        val basicEndpoints = listOf("https://api.ipify.org?format=json", "https://api64.ipify.org?format=json")
+        for (endpoint in basicEndpoints) {
+          try {
+            val url = java.net.URL(endpoint)
+            val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+              connectTimeout = 3000
+              readTimeout = 3000
+              requestMethod = "GET"
+            }
+            if (conn.responseCode == 200) {
+              val text = conn.inputStream.bufferedReader().use { it.readText() }.trim()
+              val fetchedIp = if (text.startsWith("{")) {
+                JSONObject(text).optString("ip", "")
+              } else text
+
+              if (fetchedIp.isNotBlank() && (fetchedIp.contains(".") || fetchedIp.contains(":"))) {
+                _ipDetails.value = IpDetails(
+                  ip = fetchedIp,
+                  country = if (isConnected) currentServer.country else "Direct Network",
+                  countryCode = if (isConnected) currentServer.countryCode else "",
+                  city = if (isConnected) currentServer.city else "Detected",
+                  isp = if (isConnected) "${currentServer.protocolSupport} Tunnel Active" else "Direct ISP Uplink",
+                  isVpnProtected = isConnected,
+                  lastUpdated = System.currentTimeMillis(),
+                  isLoading = false
+                )
+                _currentIp.value = fetchedIp
+                resolved = true
+                break
+              }
+            }
+          } catch (e: Exception) {
+            // Next
+          }
+        }
+      }
+
+      if (!resolved) {
+        _ipDetails.update { current ->
+          val fallbackIp = if (isConnected) currentServer.ipAddress else current.ip
+          current.copy(
+            ip = fallbackIp,
+            country = if (isConnected) currentServer.country else current.country,
+            countryCode = if (isConnected) currentServer.countryCode else current.countryCode,
+            city = if (isConnected) currentServer.city else current.city,
+            isp = if (isConnected) "${currentServer.protocolSupport} Protected Gateway" else current.isp,
+            isVpnProtected = isConnected,
+            isLoading = false
+          )
         }
       }
     }
@@ -689,7 +878,7 @@ class VpnViewModel : ViewModel() {
         var processedText = rawInput.trim()
         if (!processedText.contains("://") && processedText.length > 20 && !processedText.contains(" ")) {
           try {
-            val decoded = String(Base64.decode(processedText, Base64.DEFAULT))
+            val decoded = String(Base64.decode(processedText, Base64.DEFAULT), StandardCharsets.UTF_8)
             if (decoded.contains("://")) {
               processedText = decoded
             }
@@ -704,104 +893,86 @@ class VpnViewModel : ViewModel() {
           return@launch
         }
 
-        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
         val newlyImportedServers = mutableListOf<Server>()
 
         for ((index, line) in lines.withIndex()) {
           try {
-            var uriStr = line
-            var serverName = "Imported Server ${index + 1}"
-            if (uriStr.contains("#")) {
-              val parts = uriStr.split("#", limit = 2)
-              uriStr = parts[0]
-              if (parts.size > 1 && parts[1].isNotBlank()) {
-                serverName = java.net.URLDecoder.decode(parts[1].trim(), "UTF-8")
-              }
+            val parsedConfig = VpnConfigParser.parse(line, "127.0.0.1", 443)
+
+            var serverName = parsedConfig.remark.ifBlank { "Imported Server ${index + 1}" }
+            if (serverName.startsWith("#")) {
+              serverName = serverName.removePrefix("#").trim()
             }
 
-            val lowerUri = uriStr.lowercase()
-            val protocol = when {
-              lowerUri.startsWith("vless://") -> "VLESS"
-              lowerUri.startsWith("vmess://") -> "VMESS"
-              lowerUri.startsWith("trojan://") -> "TROJAN"
-              lowerUri.startsWith("ss://") || lowerUri.startsWith("shadowsocks://") -> "Shadowsocks"
-              lowerUri.startsWith("hy2://") || lowerUri.startsWith("hysteria2://") -> "Hysteria2"
-              lowerUri.startsWith("tuic://") -> "TUIC"
-              lowerUri.startsWith("wg://") || lowerUri.startsWith("wireguard://") -> "WireGuard"
-              else -> "Custom Config"
+            val address = parsedConfig.host
+            val port = parsedConfig.port
+            val uuid = parsedConfig.uuidOrPassword
+            val protocol = parsedConfig.protocol
+            val network = parsedConfig.network
+
+            // Detect country and country code
+            val lowerHost = address.lowercase()
+            val lowerName = serverName.lowercase()
+            val (detectedCountry, detectedCountryCode) = when {
+              lowerHost.endsWith(".ir") || lowerName.contains("iran") || lowerName.contains("ir") -> "Iran" to "IR"
+              lowerHost.endsWith(".de") || lowerName.contains("germany") || lowerName.contains("de") -> "Germany" to "DE"
+              lowerHost.endsWith(".nl") || lowerName.contains("netherlands") || lowerName.contains("nl") -> "Netherlands" to "NL"
+              lowerHost.endsWith(".uk") || lowerHost.endsWith(".co.uk") || lowerName.contains("uk") -> "United Kingdom" to "GB"
+              lowerHost.endsWith(".fr") || lowerName.contains("france") || lowerName.contains("fr") -> "France" to "FR"
+              lowerHost.endsWith(".sg") || lowerName.contains("singapore") || lowerName.contains("sg") -> "Singapore" to "SG"
+              lowerHost.endsWith(".jp") || lowerName.contains("japan") || lowerName.contains("jp") -> "Japan" to "JP"
+              lowerHost.endsWith(".ca") || lowerName.contains("canada") || lowerName.contains("ca") -> "Canada" to "CA"
+              lowerHost.endsWith(".ru") || lowerName.contains("russia") || lowerName.contains("ru") -> "Russia" to "RU"
+              lowerHost.endsWith(".tr") || lowerName.contains("turkey") || lowerName.contains("tr") -> "Turkey" to "TR"
+              else -> "Imported" to "US"
             }
-
-            val schemeEnd = uriStr.indexOf("://")
-            val schemeLess = if (schemeEnd != -1) uriStr.substring(schemeEnd + 3) else uriStr
-
-            val queryStart = schemeLess.indexOf("?")
-            val authority = if (queryStart != -1) schemeLess.substring(0, queryStart) else schemeLess
-            val query = if (queryStart != -1) schemeLess.substring(queryStart + 1) else ""
-
-            val atIndex = authority.indexOf("@")
-            val uuid = if (atIndex != -1) authority.substring(0, atIndex) else ""
-            val hostPort = if (atIndex != -1) authority.substring(atIndex + 1) else authority
-
-            val colonIndex = hostPort.lastIndexOf(":")
-            val address = if (colonIndex != -1) hostPort.substring(0, colonIndex) else hostPort
-            val portStr = if (colonIndex != -1) hostPort.substring(colonIndex + 1) else "443"
-            val port = portStr.toIntOrNull() ?: 443
-
-            val params = mutableMapOf<String, String>()
-            if (query.isNotBlank()) {
-              for (param in query.split("&")) {
-                val kv = param.split("=", limit = 2)
-                if (kv.size == 2) {
-                  params[kv[0]] = kv[1]
-                }
-              }
-            }
-
-            val security = params["security"] ?: "tls"
-            val network = params["type"] ?: "tcp"
 
             val serverId = "import-${System.currentTimeMillis()}-$index"
 
             val parsedServer = Server(
               id = serverId,
-              country = "Imported",
+              country = detectedCountry,
               city = serverName,
-              countryCode = "US",
-              pingMs = Random.nextInt(15, 50),
+              countryCode = detectedCountryCode,
+              pingMs = Random.nextInt(18, 55),
               loadPercent = Random.nextInt(15, 45),
               ipAddress = address.ifBlank { "185.241.44.9" },
               category = ServerCategory.FASTEST,
               region = "Global",
               protocolSupport = "$protocol · ${network.uppercase()}",
               isImported = true,
-              configUri = uriStr,
+              configUri = line,
               port = port,
               uuid = uuid
             )
             newlyImportedServers.add(parsedServer)
 
-            // Save to Firestore asynchronously
+            // Save to Firestore asynchronously if available
             try {
+              val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
               val serverData = hashMapOf(
                 "name" to serverName,
-                "country" to "Imported",
-                "countryCode" to "US",
+                "country" to detectedCountry,
+                "countryCode" to detectedCountryCode,
                 "city" to serverName,
                 "host" to address,
                 "ip" to address,
                 "port" to port.toLong(),
                 "protocol" to protocol,
                 "network" to network,
-                "security" to security,
-                "configUri" to uriStr,
+                "security" to parsedConfig.security,
+                "encryption" to parsedConfig.encryption,
+                "sni" to parsedConfig.sni,
+                "path" to parsedConfig.path,
+                "configUri" to line,
                 "uuid" to uuid,
                 "isImported" to true,
                 "isActive" to true,
                 "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
               )
               db.collection("servers").document(serverId).set(serverData)
-            } catch (e: Exception) {
-              // Ignore offline firestore write
+            } catch (e: Throwable) {
+              // Ignore offline or uninitialized firestore
             }
           } catch (e: Exception) {
             // ignore malformed line
@@ -814,13 +985,12 @@ class VpnViewModel : ViewModel() {
           }
           val importedFirst = newlyImportedServers.first()
           _selectedServer.value = importedFirst
-          _statusMessage.value = "Imported ${newlyImportedServers.size} server(s)! Connecting to ${importedFirst.city}..."
-          connect(context)
+          _statusMessage.value = "Imported ${newlyImportedServers.size} configuration(s)! Selected ${importedFirst.city}."
         } else {
-          _statusMessage.value = "Failed to parse configurations."
+          _statusMessage.value = "Failed to parse configurations. Verify URI format."
         }
       } catch (e: Exception) {
-        _statusMessage.value = "Error importing configurations."
+        _statusMessage.value = "Error importing configurations: ${e.message}"
       }
     }
   }
@@ -831,7 +1001,7 @@ class VpnViewModel : ViewModel() {
         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
         db.collection("servers").document(serverId).delete()
         db.collection("vpnConfigs").document(serverId).delete()
-      } catch (e: Exception) {
+      } catch (e: Throwable) {
         // ignore network error
       }
 
@@ -841,30 +1011,44 @@ class VpnViewModel : ViewModel() {
           _selectedServer.value = fallback
         }
       }
-      _statusMessage.value = "Server deleted successfully"
+      _statusMessage.value = "Server config deleted successfully"
     }
   }
 
   fun clearAllImportedServers() {
+    deleteAllServers(onlyImported = true)
+  }
+
+  fun deleteAllServers(onlyImported: Boolean = false) {
     viewModelScope.launch {
-      val importedIds = _servers.value.filter { it.isImported }.map { it.id }
+      val idsToDelete = if (onlyImported) {
+        _servers.value.filter { it.isImported }.map { it.id }
+      } else {
+        _servers.value.map { it.id }
+      }
+
       try {
         val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
-        for (id in importedIds) {
+        for (id in idsToDelete) {
           db.collection("servers").document(id).delete()
           db.collection("vpnConfigs").document(id).delete()
         }
-      } catch (e: Exception) {
+      } catch (e: Throwable) {
         // ignore network error
       }
 
-      _servers.update { list -> list.filter { !it.isImported } }
-      if (_selectedServer.value.isImported) {
-        _servers.value.firstOrNull()?.let { fallback ->
-          _selectedServer.value = fallback
+      if (onlyImported) {
+        _servers.update { list -> list.filter { !it.isImported } }
+        if (_selectedServer.value.isImported) {
+          _servers.value.firstOrNull()?.let { fallback ->
+            _selectedServer.value = fallback
+          }
         }
+        _statusMessage.value = "All imported configurations deleted"
+      } else {
+        _servers.value = emptyList()
+        _statusMessage.value = "All configurations deleted"
       }
-      _statusMessage.value = "All imported configurations cleared"
     }
   }
 
@@ -919,6 +1103,43 @@ class VpnViewModel : ViewModel() {
       _servers.value = updatedList
       _selectedServer.update { current -> updatedList.find { it.id == current.id } ?: updatedList.firstOrNull() ?: current }
       _statusMessage.value = "Ping test completed: $onlineCount online, $offlineCount offline/expired"
+    }
+  }
+
+  fun addManualServer(server: Server, andConnect: Boolean = false, context: Context? = null) {
+    viewModelScope.launch {
+      _servers.update { list ->
+        listOf(server) + list.filter { it.id != server.id }
+      }
+      _selectedServer.value = server
+      _statusMessage.value = "Added server ${server.city} (${server.protocolSupport})"
+
+      // Save to Firestore asynchronously if available
+      try {
+        val db = com.google.firebase.firestore.FirebaseFirestore.getInstance()
+        val serverData = hashMapOf(
+          "name" to server.city,
+          "country" to server.country,
+          "countryCode" to server.countryCode,
+          "city" to server.city,
+          "host" to server.ipAddress,
+          "ip" to server.ipAddress,
+          "port" to server.port.toLong(),
+          "protocol" to server.protocolSupport,
+          "configUri" to server.configUri,
+          "uuid" to server.uuid,
+          "isImported" to true,
+          "isActive" to true,
+          "createdAt" to com.google.firebase.firestore.FieldValue.serverTimestamp()
+        )
+        db.collection("servers").document(server.id).set(serverData)
+      } catch (e: Throwable) {
+        // ignore offline
+      }
+
+      if (andConnect) {
+        connect(context)
+      }
     }
   }
 }

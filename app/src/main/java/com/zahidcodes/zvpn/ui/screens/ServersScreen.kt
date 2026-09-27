@@ -32,11 +32,16 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tune
@@ -44,6 +49,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -105,6 +112,9 @@ fun ServersScreen(
   onPingAll: () -> Unit = {},
   onDeleteServer: (String) -> Unit = {},
   onClearAllImported: () -> Unit = {},
+  onDeleteAll: () -> Unit = {},
+  onImportClick: (() -> Unit)? = null,
+  onAddManualClick: (() -> Unit)? = null,
   onUploadFirestore: () -> Unit = {},
   schemaJson: String = "",
   onBackClick: (() -> Unit)? = null,
@@ -113,6 +123,9 @@ fun ServersScreen(
   var serverDetailToInspect by remember { mutableStateOf<Server?>(null) }
   var showSortDialog by remember { mutableStateOf(false) }
   var showFirestoreFormatDialog by remember { mutableStateOf(false) }
+  var serverToDelete by remember { mutableStateOf<Server?>(null) }
+  var showDeleteAllDialog by remember { mutableStateOf(false) }
+  var showPlusMenu by remember { mutableStateOf(false) }
 
   // Filter list
   val filteredServers = servers.filter { server ->
@@ -206,53 +219,121 @@ fun ServersScreen(
           }
         }
 
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-          // Sort Options Button
-          Box(
-            modifier = Modifier
-              .size(36.dp)
-              .clip(RoundedCornerShape(10.dp))
-              .background(
-                Brush.linearGradient(
-                  colors = listOf(Color(0xFF132845), Color(0xFF0D1B2D))
-                )
+        // Single Top-Right Plus Button with Comprehensive Dropdown Menu
+        Box(
+          modifier = Modifier
+            .size(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(
+              Brush.linearGradient(
+                colors = listOf(Color(0xFF132845), Color(0xFF0D1B2D))
               )
-              .border(1.dp, CyanAccent.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-              .clickable { showSortDialog = true }
-              .testTag("sort_servers_button"),
-            contentAlignment = Alignment.Center
-          ) {
-            Icon(
-              imageVector = Icons.Rounded.Tune,
-              contentDescription = "Sort Options",
-              tint = CyanAccent,
-              modifier = Modifier.size(18.dp)
             )
-          }
+            .border(1.dp, CyanAccent.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
+            .clickable { showPlusMenu = true }
+            .testTag("servers_screen_plus_menu_button"),
+          contentAlignment = Alignment.Center
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.Add,
+            contentDescription = "Server Actions & Management Menu",
+            tint = CyanAccent,
+            modifier = Modifier.size(20.dp)
+          )
 
-          // Firestore Cloud Sync & Database Formats Button
-          Box(
+          DropdownMenu(
+            expanded = showPlusMenu,
+            onDismissRequest = { showPlusMenu = false },
             modifier = Modifier
-              .size(36.dp)
-              .clip(RoundedCornerShape(10.dp))
-              .background(
-                Brush.linearGradient(
-                  colors = listOf(Color(0xFF132845), Color(0xFF0D1B2D))
-                )
-              )
-              .border(1.dp, OkEmerald.copy(alpha = 0.45f), RoundedCornerShape(10.dp))
-              .clickable { showFirestoreFormatDialog = true }
-              .testTag("firestore_format_button"),
-            contentAlignment = Alignment.Center
+              .background(Color(0xFF0F2035))
+              .border(1.dp, Color(0x3300F0FF), RoundedCornerShape(8.dp))
+              .testTag("servers_plus_dropdown_menu")
           ) {
-            Icon(
-              imageVector = Icons.Rounded.CloudSync,
-              contentDescription = "Firestore Database Formats",
-              tint = OkEmerald,
-              modifier = Modifier.size(18.dp)
+            // Option 1: Import Config Link / URI
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Import Config Link / URI", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("VLESS, Trojan, VMess, WireGuard link", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.Link, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                onImportClick?.invoke()
+              }
+            )
+
+            // Option 2: Add Server Manually
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Add Server Manually", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("Host, port, protocol & connect", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.Dns, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                onAddManualClick?.invoke()
+              }
+            )
+
+            // Option 3: Filter & Sort Servers
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Filter & Sort Servers", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("Sort by ping, load, country or name", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.Tune, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                showSortDialog = true
+              }
+            )
+
+            // Option 4: Delete / Clear Configurations
+            if (servers.isNotEmpty()) {
+              DropdownMenuItem(
+                text = {
+                  Column {
+                    Text("Delete / Clear Configurations", color = Color(0xFFEF4444), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Remove imported or all server nodes", color = TextMuted, fontSize = 10.5.sp)
+                  }
+                },
+                leadingIcon = {
+                  Icon(Icons.Rounded.DeleteSweep, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
+                },
+                onClick = {
+                  showPlusMenu = false
+                  showDeleteAllDialog = true
+                }
+              )
+            }
+
+            // Option 5: Firestore Cloud Sync & Formats
+            DropdownMenuItem(
+              text = {
+                Column {
+                  Text("Sync Firestore Database", color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                  Text("View & upload cloud server schema", color = TextMuted, fontSize = 10.5.sp)
+                }
+              },
+              leadingIcon = {
+                Icon(Icons.Rounded.CloudSync, contentDescription = null, tint = OkEmerald, modifier = Modifier.size(18.dp))
+              },
+              onClick = {
+                showPlusMenu = false
+                showFirestoreFormatDialog = true
+              }
             )
           }
         }
@@ -382,11 +463,58 @@ fun ServersScreen(
           color = TextMuted2
         )
 
-        Text(
-          text = "Tap ping icon for live diagnostic test",
-          fontSize = 10.sp,
-          color = TextMuted
-        )
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+          if (servers.any { it.isImported }) {
+            TextButton(
+              onClick = { showDeleteAllDialog = true },
+              contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
+              modifier = Modifier.testTag("clear_imported_configs_button")
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.DeleteSweep,
+                contentDescription = "Delete Configs",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = "Delete All Imported",
+                color = Color(0xFFEF4444),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          } else if (servers.isNotEmpty()) {
+            TextButton(
+              onClick = { showDeleteAllDialog = true },
+              contentPadding = PaddingValues(horizontal = 6.dp, vertical = 1.dp),
+              modifier = Modifier.testTag("clear_all_configs_button")
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.DeleteSweep,
+                contentDescription = "Clear All",
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(13.dp)
+              )
+              Spacer(modifier = Modifier.width(3.dp))
+              Text(
+                text = "Clear All",
+                color = Color(0xFFEF4444),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+              )
+            }
+          }
+
+          Text(
+            text = "· Live Delay",
+            fontSize = 10.sp,
+            color = TextMuted
+          )
+        }
       }
     }
 
@@ -404,9 +532,198 @@ fun ServersScreen(
         onPingClick = { onPingServer(server.id) },
         onInfoClick = { serverDetailToInspect = server },
         onToggleFavorite = { onToggleFavorite(server.id) },
-        onDelete = { onDeleteServer(server.id) }
+        onDelete = { serverToDelete = server }
       )
     }
+  }
+
+  // Delete Single Server Confirmation Dialog
+  serverToDelete?.let { server ->
+    AlertDialog(
+      onDismissRequest = { serverToDelete = null },
+      containerColor = DarkSurfaceElevated,
+      title = {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.Delete,
+            contentDescription = null,
+            tint = Color(0xFFEF4444),
+            modifier = Modifier.size(22.dp)
+          )
+          Text("Delete Configuration", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+          Text(
+            text = "Are you sure you want to delete this configuration?",
+            color = TextMuted,
+            fontSize = 12.sp
+          )
+          Box(
+            modifier = Modifier
+              .fillMaxWidth()
+              .clip(RoundedCornerShape(8.dp))
+              .background(Color(0xFF0C1929))
+              .padding(8.dp)
+          ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+              Text(
+                text = "${server.city}, ${server.country}",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+              )
+              Text(
+                text = "${server.protocolSupport} · ${server.ipAddress}:${server.port}",
+                color = CyanAccent,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace
+              )
+            }
+          }
+        }
+      },
+      confirmButton = {
+        Button(
+          onClick = {
+            onDeleteServer(server.id)
+            serverToDelete = null
+          },
+          colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+          shape = RoundedCornerShape(8.dp),
+          modifier = Modifier.testTag("confirm_delete_single_btn")
+        ) {
+          Text("Delete", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+      },
+      dismissButton = {
+        TextButton(onClick = { serverToDelete = null }) {
+          Text("Cancel", color = TextMuted, fontSize = 12.sp)
+        }
+      }
+    )
+  }
+
+  // Delete All / Bulk Configurations Dialog
+  if (showDeleteAllDialog) {
+    val importedCount = servers.count { it.isImported }
+    AlertDialog(
+      onDismissRequest = { showDeleteAllDialog = false },
+      containerColor = DarkSurfaceElevated,
+      title = {
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+          Icon(
+            imageVector = Icons.Rounded.DeleteSweep,
+            contentDescription = null,
+            tint = Color(0xFFEF4444),
+            modifier = Modifier.size(24.dp)
+          )
+          Text("Delete Configurations", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        }
+      },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+          Text(
+            text = "Select deletion scope:",
+            color = TextMuted,
+            fontSize = 12.sp
+          )
+
+          if (importedCount > 0) {
+            Button(
+              onClick = {
+                onClearAllImported()
+                showDeleteAllDialog = false
+              },
+              colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2A151C)),
+              shape = RoundedCornerShape(8.dp),
+              modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                .testTag("delete_all_imported_option_btn")
+            ) {
+              Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+              ) {
+                Icon(
+                  imageVector = Icons.Rounded.DeleteSweep,
+                  contentDescription = null,
+                  tint = Color(0xFFEF4444),
+                  modifier = Modifier.size(18.dp)
+                )
+                Column {
+                  Text(
+                    text = "Delete All Imported ($importedCount)",
+                    color = Color(0xFFEF4444),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.5.sp
+                  )
+                  Text(
+                    text = "Keeps default standard servers",
+                    color = TextMuted,
+                    fontSize = 10.sp
+                  )
+                }
+              }
+            }
+          }
+
+          Button(
+            onClick = {
+              onDeleteAll()
+              showDeleteAllDialog = false
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF381418)),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+              .fillMaxWidth()
+              .border(1.dp, Color(0xFFEF4444), RoundedCornerShape(8.dp))
+              .testTag("delete_everything_option_btn")
+          ) {
+            Row(
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+            ) {
+              Icon(
+                imageVector = Icons.Rounded.DeleteForever,
+                contentDescription = null,
+                tint = Color(0xFFEF4444),
+                modifier = Modifier.size(18.dp)
+              )
+              Column {
+                Text(
+                  text = "Delete All Servers (${servers.size})",
+                  color = Color.White,
+                  fontWeight = FontWeight.Bold,
+                  fontSize = 12.5.sp
+                )
+                Text(
+                  text = "Clears all configuration nodes from the list",
+                  color = Color(0xFFEF4444).copy(alpha = 0.8f),
+                  fontSize = 10.sp
+                )
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {},
+      dismissButton = {
+        TextButton(onClick = { showDeleteAllDialog = false }) {
+          Text("Cancel", color = TextMuted, fontSize = 12.sp)
+        }
+      }
+    )
   }
 
   // Sort Dialog
@@ -857,20 +1174,19 @@ private fun ProfessionalServerListItem(
         }
       }
 
-      if (server.isImported) {
-        IconButton(
-          onClick = onDelete,
-          modifier = Modifier
-            .size(24.dp)
-            .testTag("delete_server_${server.id}")
-        ) {
-          Icon(
-            imageVector = Icons.Rounded.Delete,
-            contentDescription = "Delete Server",
-            tint = Color(0xFFEF4444).copy(alpha = 0.85f),
-            modifier = Modifier.size(13.dp)
-          )
-        }
+      // Delete Button for One-by-One Deletion
+      IconButton(
+        onClick = onDelete,
+        modifier = Modifier
+          .size(26.dp)
+          .testTag("delete_server_${server.id}")
+      ) {
+        Icon(
+          imageVector = Icons.Rounded.Delete,
+          contentDescription = "Delete Configuration",
+          tint = if (server.isImported) Color(0xFFEF4444) else Color(0xFFEF4444).copy(alpha = 0.65f),
+          modifier = Modifier.size(15.dp)
+        )
       }
 
       IconButton(

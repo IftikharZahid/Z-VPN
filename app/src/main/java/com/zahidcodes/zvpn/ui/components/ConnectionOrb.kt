@@ -38,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.zahidcodes.zvpn.model.VpnStatus
+import com.zahidcodes.zvpn.ui.theme.CyanAccent
 import com.zahidcodes.zvpn.ui.theme.OkEmerald
 import com.zahidcodes.zvpn.ui.theme.TextMuted
 import com.zahidcodes.zvpn.ui.theme.VibrantBlue
@@ -116,27 +117,27 @@ fun ConnectionOrb(
 
   val ringColor by animateColorAsState(
     targetValue = when (vpnStatus) {
-      VpnStatus.DISCONNECTED -> Color(0x22FFFFFF)
-      VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.75f)
-      VpnStatus.CONNECTED -> OkEmerald.copy(alpha = 0.65f)
-      VpnStatus.RECONNECTING -> WarningAmber.copy(alpha = 0.8f)
+      VpnStatus.DISCONNECTED -> CyanAccent.copy(alpha = 0.35f)
+      VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.85f)
+      VpnStatus.CONNECTED -> OkEmerald.copy(alpha = 0.75f)
+      VpnStatus.RECONNECTING -> WarningAmber.copy(alpha = 0.85f)
     },
     label = "ring_color"
   )
 
   val orbBorderColor by animateColorAsState(
     targetValue = when (vpnStatus) {
-      VpnStatus.DISCONNECTED -> Color(0x33FFFFFF)
-      VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.9f)
+      VpnStatus.DISCONNECTED -> CyanAccent.copy(alpha = 0.7f)
+      VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.95f)
       VpnStatus.CONNECTED -> OkEmerald.copy(alpha = 0.95f)
-      VpnStatus.RECONNECTING -> WarningAmber.copy(alpha = 0.9f)
+      VpnStatus.RECONNECTING -> WarningAmber.copy(alpha = 0.95f)
     },
     label = "orb_border_color"
   )
 
   val iconColor by animateColorAsState(
     targetValue = when (vpnStatus) {
-      VpnStatus.DISCONNECTED -> TextMuted
+      VpnStatus.DISCONNECTED -> CyanAccent
       VpnStatus.CONNECTING -> Color(0xFF93C5FD)
       VpnStatus.CONNECTED -> OkEmerald
       VpnStatus.RECONNECTING -> WarningAmber
@@ -182,7 +183,7 @@ fun ConnectionOrb(
 
       // Inner static ring
       drawCircle(
-        color = Color(0x18FFFFFF),
+        color = ringColor.copy(alpha = 0.2f),
         radius = radius - 10.dp.toPx(),
         style = Stroke(width = 1.2.dp.toPx())
       )
@@ -203,7 +204,7 @@ fun ConnectionOrb(
     // Central Glowing Power Orb Button
     val orbBrush = when (vpnStatus) {
       VpnStatus.DISCONNECTED -> Brush.radialGradient(
-        colors = listOf(Color(0xFF233658), Color(0xFF142036), Color(0xFF0B1220))
+        colors = listOf(Color(0xFF1E3A8A), Color(0xFF13284C), Color(0xFF091426))
       )
       VpnStatus.CONNECTING -> Brush.radialGradient(
         colors = listOf(Color(0xFF1E468A), Color(0xFF122C5C), Color(0xFF0A1833))
@@ -224,9 +225,9 @@ fun ConnectionOrb(
         .clip(CircleShape)
         .background(
           when (vpnStatus) {
-            VpnStatus.DISCONNECTED -> Color.Transparent
-            VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.3f)
-            VpnStatus.CONNECTED -> OkEmerald.copy(alpha = 0.4f)
+            VpnStatus.DISCONNECTED -> CyanAccent.copy(alpha = 0.22f)
+            VpnStatus.CONNECTING -> VibrantBlue.copy(alpha = 0.35f)
+            VpnStatus.CONNECTED -> OkEmerald.copy(alpha = 0.45f)
             VpnStatus.RECONNECTING -> WarningAmber.copy(alpha = 0.35f)
           }
         )
