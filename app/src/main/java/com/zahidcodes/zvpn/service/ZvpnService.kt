@@ -160,6 +160,12 @@ class ZvpnService : VpnService() {
           builder.setMetered(false)
         }
 
+        try {
+          builder.addDisallowedApplication(packageName)
+        } catch (e: Exception) {
+          Log.w(TAG, "Disallowed application setup note: ${e.message}")
+        }
+
         val pfd = builder.establish()
         if (pfd == null) {
           throw IllegalStateException("VpnService.Builder.establish() returned null. Permission might be missing or revoked.")

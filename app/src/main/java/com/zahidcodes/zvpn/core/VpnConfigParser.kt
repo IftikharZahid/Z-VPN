@@ -17,7 +17,8 @@ data class ParsedVpnConfig(
   val network: String = "tcp",
   val encryption: String = "none",
   val remark: String = "",
-  val rawUri: String = ""
+  val rawUri: String = "",
+  val alpn: String = "http/1.1"
 )
 
 object VpnConfigParser {
@@ -117,6 +118,7 @@ object VpnConfigParser {
       val path = params["path"] ?: ""
       val type = params["type"] ?: params["net"] ?: "tcp"
       val encryption = params["encryption"] ?: "none"
+      val alpn = params["alpn"] ?: "http/1.1"
 
       ParsedVpnConfig(
         protocol = "VLESS",
@@ -129,7 +131,8 @@ object VpnConfigParser {
         network = type,
         encryption = encryption,
         remark = remark,
-        rawUri = uriStr
+        rawUri = uriStr,
+        alpn = alpn
       )
     } catch (e: Exception) {
       ParsedVpnConfig(
@@ -191,7 +194,12 @@ object VpnConfigParser {
   private fun parseVmess(uriStr: String): ParsedVpnConfig {
     return try {
       val b64 = uriStr.removePrefix("vmess://").trim()
-      val decoded = String(Base64.decode(b64, Base64.DEFAULT), StandardCharsets.UTF_8)
+      val decodedBytes = try {
+        Base64.decode(b64, Base64.DEFAULT)
+      } catch (e: Exception) {
+        Base64.decode(b64, Base64.URL_SAFE or Base64.NO_PADDING)
+      }
+      val decoded = String(decodedBytes, StandardCharsets.UTF_8)
       val json = JSONObject(decoded)
       val host = json.optString("add", "127.0.0.1")
       val port = json.optInt("port", 443)
@@ -200,7 +208,9 @@ object VpnConfigParser {
       val path = json.optString("path", "")
       val tls = json.optString("tls", "none")
       val hostHeader = json.optString("host", host)
+      val sni = json.optString("sni", hostHeader)
       val ps = json.optString("ps", "")
+      val alpn = json.optString("alpn", "http/1.1")
 
       ParsedVpnConfig(
         protocol = "VMess",
@@ -208,11 +218,12 @@ object VpnConfigParser {
         port = port,
         uuidOrPassword = id,
         security = tls,
-        sni = hostHeader,
+        sni = sni.ifBlank { hostHeader },
         path = path,
         network = net,
         remark = ps,
-        rawUri = uriStr
+        rawUri = uriStr,
+        alpn = alpn
       )
     } catch (e: Exception) {
       ParsedVpnConfig(protocol = "VMess", host = "127.0.0.1", port = 443, rawUri = uriStr)
